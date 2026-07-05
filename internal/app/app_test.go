@@ -9,21 +9,30 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
+// TestMain configures Gin for quiet test execution before running package tests.
+func TestMain(m *testing.M) {
+	gin.SetMode(gin.TestMode)
+	os.Exit(m.Run())
+}
+
+// TestRunWithoutArgsStartsHTTPServer verifies that default execution starts the configured HTTP server.
 func TestRunWithoutArgsStartsHTTPServer(t *testing.T) {
 	var stdout bytes.Buffer
 	var gotAddr string
-	var gotHandler http.Handler
+	var gotRouter *gin.Engine
 
 	app := &App{
 		Stdout:     &stdout,
 		Stderr:     &bytes.Buffer{},
 		Environ:    []string{envHTTPAddr + "=127.0.0.1:9090"},
 		DotenvPath: filepath.Join(t.TempDir(), "missing.env"),
-		ListenAndServe: func(addr string, handler http.Handler) error {
+		RunServer: func(router *gin.Engine, addr string) error {
 			gotAddr = addr
-			gotHandler = handler
+			gotRouter = router
 			return nil
 		},
 	}
@@ -34,14 +43,15 @@ func TestRunWithoutArgsStartsHTTPServer(t *testing.T) {
 	if gotAddr != "127.0.0.1:9090" {
 		t.Fatalf("addr = %q", gotAddr)
 	}
-	if gotHandler == nil {
-		t.Fatal("handler was nil")
+	if gotRouter == nil {
+		t.Fatal("router was nil")
 	}
 	if !strings.Contains(stdout.String(), "listening on 127.0.0.1:9090") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
 	}
 }
 
+// TestRunHelpPrintsWebAPIUsage verifies that help output describes Web API startup and settings.
 func TestRunHelpPrintsWebAPIUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	app := &App{Stdout: &stdout, Stderr: &bytes.Buffer{}}
@@ -58,6 +68,7 @@ func TestRunHelpPrintsWebAPIUsage(t *testing.T) {
 	}
 }
 
+// TestRunRejectsUnknownCommand verifies that removed CLI commands are rejected.
 func TestRunRejectsUnknownCommand(t *testing.T) {
 	app := &App{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
 
@@ -70,19 +81,19 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 	}
 }
 
+// TestLoadConfigReadsDotenvAndEnvironmentOverrides verifies .env loading and process environment precedence.
 func TestLoadConfigReadsDotenvAndEnvironmentOverrides(t *testing.T) {
 	dotenvPath := filepath.Join(t.TempDir(), ".env")
 	writeFile(t, dotenvPath, `
 HTTP_ADDR=:8081
 APPLE_DEVELOPER_TOKEN=token-from-file
-APPLE_STOREFRONT=jp
-INSTRUMENTAL_THRESHOLD=0.8
+APPLE_STOREFRONT=us
 `)
 
 	cfg, err := LoadConfig(configOptions{
 		Environ: []string{
 			envHTTPAddr + "=127.0.0.1:9090",
-			envInstrumentalThreshold + "=0.9",
+			envAppleStorefront + "=jp",
 		},
 		DotenvPath: dotenvPath,
 	})
@@ -99,46 +110,34 @@ INSTRUMENTAL_THRESHOLD=0.8
 	if cfg.AppleStorefront != "jp" {
 		t.Fatalf("AppleStorefront = %q", cfg.AppleStorefront)
 	}
-	if cfg.InstrumentalThreshold != 0.9 {
-		t.Fatalf("InstrumentalThreshold = %v", cfg.InstrumentalThreshold)
+}
+
+// TestLoadConfigDefaultsAppleStorefrontToJP verifies the initial storefront default.
+func TestLoadConfigDefaultsAppleStorefrontToJP(t *testing.T) {
+	cfg, err := LoadConfig(configOptions{DotenvPath: filepath.Join(t.TempDir(), "missing.env")})
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.AppleStorefront != "jp" {
+		t.Fatalf("AppleStorefront = %q", cfg.AppleStorefront)
 	}
 }
 
-func TestLoadConfigRejectsInvalidDotenvAndThreshold(t *testing.T) {
-	tests := []struct {
-		name        string
-		dotenv      string
-		environ     []string
-		wantMessage string
-	}{
-		{
-			name:        "invalid dotenv",
-			dotenv:      "BROKEN",
-			wantMessage: "expected KEY=VALUE",
-		},
-		{
-			name:        "invalid threshold",
-			dotenv:      "INSTRUMENTAL_THRESHOLD=1.5",
-			wantMessage: envInstrumentalThreshold,
-		},
+// TestLoadConfigRejectsInvalidDotenv verifies configuration parse errors.
+func TestLoadConfigRejectsInvalidDotenv(t *testing.T) {
+	dotenvPath := filepath.Join(t.TempDir(), ".env")
+	writeFile(t, dotenvPath, "BROKEN")
+
+	_, err := LoadConfig(configOptions{DotenvPath: dotenvPath})
+	if err == nil {
+		t.Fatal("LoadConfig returned nil")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dotenvPath := filepath.Join(t.TempDir(), ".env")
-			writeFile(t, dotenvPath, tt.dotenv)
-
-			_, err := LoadConfig(configOptions{Environ: tt.environ, DotenvPath: dotenvPath})
-			if err == nil {
-				t.Fatal("LoadConfig returned nil")
-			}
-			if !strings.Contains(err.Error(), tt.wantMessage) {
-				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantMessage)
-			}
-		})
+	if !strings.Contains(err.Error(), "expected KEY=VALUE") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
+// TestHealthEndpoint verifies that the health endpoint returns a successful status payload.
 func TestHealthEndpoint(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -153,12 +152,34 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+// TestBindHandlersRegistersEndpoints verifies route binding is separate from Gin engine initialization.
+func TestBindHandlersRegistersEndpoints(t *testing.T) {
+	router := NewEngine()
+
+	if got := len(router.Routes()); got != 0 {
+		t.Fatalf("routes before binding = %d", got)
+	}
+
+	BindHandlers(router, Config{})
+	if got := len(router.Routes()); got != 2 {
+		t.Fatalf("routes after binding = %d", got)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status after binding = %d", rec.Code)
+	}
+}
+
+// TestConfigEndpointRedactsDeveloperToken verifies that public config never exposes the token value.
 func TestConfigEndpointRedactsDeveloperToken(t *testing.T) {
 	cfg := Config{
-		HTTPAddr:              ":9090",
-		AppleDeveloperToken:   "secret-token",
-		AppleStorefront:       "jp",
-		InstrumentalThreshold: 0.85,
+		HTTPAddr:            ":9090",
+		AppleDeveloperToken: "secret-token",
+		AppleStorefront:     "jp",
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/config", nil)
@@ -179,11 +200,12 @@ func TestConfigEndpointRedactsDeveloperToken(t *testing.T) {
 	if !got.AppleDeveloperTokenConfigured {
 		t.Fatal("AppleDeveloperTokenConfigured = false")
 	}
-	if got.HTTPAddr != ":9090" || got.AppleStorefront != "jp" || got.InstrumentalThreshold != 0.85 {
+	if got.HTTPAddr != ":9090" || got.AppleStorefront != "jp" {
 		t.Fatalf("unexpected config response: %+v", got)
 	}
 }
 
+// TestUnsupportedMethodsReturnMethodNotAllowed verifies method restrictions for read-only endpoints.
 func TestUnsupportedMethodsReturnMethodNotAllowed(t *testing.T) {
 	for _, path := range []string{"/health", "/v1/config"} {
 		t.Run(path, func(t *testing.T) {
@@ -199,6 +221,7 @@ func TestUnsupportedMethodsReturnMethodNotAllowed(t *testing.T) {
 	}
 }
 
+// writeFile writes test fixture content and fails the test if the write cannot be completed.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

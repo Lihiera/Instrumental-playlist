@@ -4,29 +4,25 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 )
 
 const (
-	envHTTPAddr              = "HTTP_ADDR"
-	envAppleDeveloperToken   = "APPLE_DEVELOPER_TOKEN"
-	envAppleStorefront       = "APPLE_STOREFRONT"
-	envInstrumentalThreshold = "INSTRUMENTAL_THRESHOLD"
+	envHTTPAddr            = "HTTP_ADDR"
+	envAppleDeveloperToken = "APPLE_DEVELOPER_TOKEN"
+	envAppleStorefront     = "APPLE_STOREFRONT"
 )
 
 type Config struct {
-	HTTPAddr              string
-	AppleDeveloperToken   string
-	AppleStorefront       string
-	InstrumentalThreshold float64
+	HTTPAddr            string
+	AppleDeveloperToken string
+	AppleStorefront     string
 }
 
 type PublicConfig struct {
-	HTTPAddr                      string  `json:"http_addr"`
-	AppleDeveloperTokenConfigured bool    `json:"apple_developer_token_configured"`
-	AppleStorefront               string  `json:"apple_storefront"`
-	InstrumentalThreshold         float64 `json:"instrumental_threshold"`
+	HTTPAddr                      string `json:"http_addr"`
+	AppleDeveloperTokenConfigured bool   `json:"apple_developer_token_configured"`
+	AppleStorefront               string `json:"apple_storefront"`
 }
 
 type configOptions struct {
@@ -34,11 +30,11 @@ type configOptions struct {
 	DotenvPath string
 }
 
+// LoadConfig builds the runtime configuration from defaults, .env values, and process environment overrides.
 func LoadConfig(opts configOptions) (Config, error) {
 	cfg := Config{
-		HTTPAddr:              ":8080",
-		AppleStorefront:       "us",
-		InstrumentalThreshold: 0.75,
+		HTTPAddr:        ":8080",
+		AppleStorefront: "jp",
 	}
 
 	env, err := loadDotenv(opts.DotenvPath)
@@ -54,15 +50,16 @@ func LoadConfig(opts configOptions) (Config, error) {
 	return cfg, nil
 }
 
+// Public returns a redacted configuration view that is safe to expose through the API.
 func (cfg Config) Public() PublicConfig {
 	return PublicConfig{
 		HTTPAddr:                      cfg.HTTPAddr,
 		AppleDeveloperTokenConfigured: strings.TrimSpace(cfg.AppleDeveloperToken) != "",
 		AppleStorefront:               cfg.AppleStorefront,
-		InstrumentalThreshold:         cfg.InstrumentalThreshold,
 	}
 }
 
+// loadDotenv reads a KEY=VALUE .env file into a map and treats a missing file as empty configuration.
 func loadDotenv(path string) (map[string]string, error) {
 	if strings.TrimSpace(path) == "" {
 		return map[string]string{}, nil
@@ -96,6 +93,7 @@ func loadDotenv(path string) (map[string]string, error) {
 	return env, nil
 }
 
+// trimEnvValue removes surrounding whitespace and one layer of matching quotes from an environment value.
 func trimEnvValue(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) >= 2 {
@@ -106,12 +104,14 @@ func trimEnvValue(value string) string {
 	return value
 }
 
+// mergeEnv copies all values from src into dst, overwriting existing keys.
 func mergeEnv(dst, src map[string]string) {
 	for key, value := range src {
 		dst[key] = value
 	}
 }
 
+// applyEnv applies supported environment variables to cfg and validates typed values.
 func applyEnv(cfg *Config, env map[string]string) error {
 	if value := strings.TrimSpace(env[envHTTPAddr]); value != "" {
 		cfg.HTTPAddr = value
@@ -123,19 +123,10 @@ func applyEnv(cfg *Config, env map[string]string) error {
 		cfg.AppleStorefront = value
 	}
 
-	rawThreshold := strings.TrimSpace(env[envInstrumentalThreshold])
-	if rawThreshold == "" {
-		return nil
-	}
-	threshold, err := strconv.ParseFloat(rawThreshold, 64)
-	if err != nil || threshold <= 0 || threshold > 1 {
-		return fmt.Errorf("%s must be greater than 0 and less than or equal to 1", envInstrumentalThreshold)
-	}
-	cfg.InstrumentalThreshold = threshold
-
 	return nil
 }
 
+// envMap converts os.Environ-style KEY=VALUE entries into a lookup map.
 func envMap(environ []string) map[string]string {
 	env := make(map[string]string, len(environ))
 	for _, entry := range environ {

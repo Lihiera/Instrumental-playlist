@@ -35,7 +35,7 @@ Status: Next
 ## Phase 4: Instrumental Detection
 
 - Implement default heuristic rules.
-- Add scoring, exclusion reasons, and configurable threshold.
+- Add scoring and exclusion reasons.
 - Add tests for representative instrumental and non-instrumental metadata.
 
 ## Phase 5: Conversion REST APIs

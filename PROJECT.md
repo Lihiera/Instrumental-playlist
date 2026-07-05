@@ -7,7 +7,7 @@ Apple Musicの既存プレイリストを解析し、インストゥルメンタ
 ## Success Criteria
 
 - Go製HTTPサーバーとして起動できる。
-- `.env`からDeveloper Token、HTTP待受アドレス、Storefront、インスト判定しきい値を読み込める。
+- `.env`からDeveloper Token、HTTP待受アドレス、Storefrontを読み込める。
 - Apple MusicユーザーのMusic User TokenをRESTリクエストのヘッダーで受け取れる。
 - REST API経由でプレイリスト一覧を取得できる。
 - REST API経由でプレイリストの作成、削除、曲追加、曲削除ができる。

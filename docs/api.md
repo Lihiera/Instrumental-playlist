@@ -8,8 +8,7 @@ Required or supported settings:
 
 - `HTTP_ADDR`: HTTP listen address. Default: `:8080`.
 - `APPLE_DEVELOPER_TOKEN`: Apple Music Developer Token. This value is never returned by API responses.
-- `APPLE_STOREFRONT`: Apple Music storefront code. Default: `us`.
-- `INSTRUMENTAL_THRESHOLD`: Instrumental detection threshold from `0` to `1`. Default: `0.75`.
+- `APPLE_STOREFRONT`: Apple Music storefront code. Default: `jp`.
 
 ## Endpoints
 
@@ -29,8 +28,7 @@ Returns public runtime configuration. Secret values are redacted by omission.
 {
   "http_addr": ":8080",
   "apple_developer_token_configured": true,
-  "apple_storefront": "us",
-  "instrumental_threshold": 0.75
+  "apple_storefront": "jp"
 }
 ```
 

@@ -20,7 +20,9 @@ Apple Music API behavior is still not implemented. The next implementation task 
 - Decided that Developer Token will be read from `.env`.
 - Decided that OS user config/cache/secrets directories are not required for the Web API version.
 - Replaced the CLI command surface with HTTP server startup.
-- Added `.env`/process-environment configuration for `HTTP_ADDR`, `APPLE_DEVELOPER_TOKEN`, `APPLE_STOREFRONT`, and `INSTRUMENTAL_THRESHOLD`.
+- Added `.env`/process-environment configuration for `HTTP_ADDR`, `APPLE_DEVELOPER_TOKEN`, and `APPLE_STOREFRONT`.
+- Set the default Apple Music storefront to `jp`.
+- Removed `INSTRUMENTAL_THRESHOLD` from the current runtime configuration.
 - Added `.env.example`.
 - Added `GET /health`.
 - Added `GET /v1/config` with Developer Token redaction by omission.
@@ -46,7 +48,6 @@ Apple Music API behavior is still not implemented. The next implementation task 
 
 - Exact client-side flow for obtaining Music User Token before calling this API.
 - Whether CORS is needed for a future browser client.
-- Minimum acceptable instrumental detection threshold for the first manual test.
 - Whether conversion reports should be returned only in API responses or also saved to local files later.
 
 ## Verification Checklist

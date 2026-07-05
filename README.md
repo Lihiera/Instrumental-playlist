@@ -56,8 +56,7 @@ Developer Tokenは`.env`から読み込みます。OSのユーザー設定ディ
 ```env
 HTTP_ADDR=:8080
 APPLE_DEVELOPER_TOKEN=replace-with-apple-music-developer-token
-APPLE_STOREFRONT=us
-INSTRUMENTAL_THRESHOLD=0.75
+APPLE_STOREFRONT=jp
 ```
 
 サーバーを起動します。
