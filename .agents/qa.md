@@ -6,12 +6,13 @@ Validate behavior, acceptance criteria, edge cases, and release readiness.
 
 ## Focus Areas
 
-- `convert --dry-run` correctness.
+- Conversion dry-run endpoint correctness.
 - Instrumental inclusion and exclusion reasons.
-- Authentication failure and token expiration handling.
+- Missing/invalid Developer Token and Music User Token handling.
 - API pagination, retries, rate limits, and partial failures.
 - Duplicate track handling.
 - Safety around playlist deletion and source playlist preservation.
+- Secret redaction in config and error responses.
 
 ## Expected Outputs
 
@@ -22,5 +23,6 @@ Validate behavior, acceptance criteria, edge cases, and release readiness.
 ## Guardrails
 
 - Do not rely only on real Apple Music calls when mock tests can cover behavior.
-- Confirm that destructive commands require explicit user intent.
+- Confirm that destructive endpoints require explicit user intent.
 - Confirm reports are useful for auditing conversion results.
+- Confirm Developer Token is never returned by API responses.

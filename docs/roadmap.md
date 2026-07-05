@@ -6,25 +6,31 @@
 - Add project metadata, progress tracking, and agent definitions.
 - Add base Go module.
 
-## Phase 1: CLI and Configuration Foundation
+## Phase 1: Web API and Configuration Foundation
 
-- Define CLI command structure.
-- Implement configuration loading from file and environment variables.
-- Define local paths for config, tokens, reports, and secrets.
+Status: Complete
 
-## Phase 2: Authentication
+- Replace the current CLI command foundation with an HTTP server foundation.
+- Load runtime settings from `.env` and process environment variables.
+- Remove dependency on OS user config/cache directories for application behavior.
+- Add `/health` and `/v1/config` endpoints.
+- Ensure secret values such as Developer Token are never returned by public config responses.
 
-- Generate Apple Music Developer Token from Team ID, Key ID, and `.p8` private key.
-- Implement `auth login` with localhost + MusicKit JS.
-- Store Music User Token locally outside the repository.
+## Phase 2: Apple Music API Client
 
-## Phase 3: Apple Music API Client
+Status: Next
 
-- Implement shared HTTP client with authentication headers.
-- Add playlist list/create/delete operations.
-- Add catalog search.
-- Add playlist track read/add/remove operations.
-- Handle pagination, rate limiting, retries, and API errors.
+- Implement shared HTTP client with Developer Token authentication.
+- Accept Music User Token from request headers for user-library operations.
+- Handle JSON responses, pagination, rate limiting, retries, and Apple Music API errors.
+
+## Phase 3: Playlist and Search REST APIs
+
+- Add `GET /v1/playlists`.
+- Add `POST /v1/playlists`.
+- Add `DELETE /v1/playlists/{playlistID}`.
+- Add `GET /v1/search/tracks?term=...`.
+- Add playlist track read/add/remove endpoints.
 
 ## Phase 4: Instrumental Detection
 
@@ -32,15 +38,16 @@
 - Add scoring, exclusion reasons, and configurable threshold.
 - Add tests for representative instrumental and non-instrumental metadata.
 
-## Phase 5: Conversion Workflow
+## Phase 5: Conversion REST APIs
 
-- Implement `convert --source <playlist-id> --name <new-name>`.
-- Add `--dry-run` output with adopted/excluded tracks and reasons.
-- Create new playlist and add accepted tracks.
-- Save conversion reports for auditing and reruns.
+- Add `POST /v1/conversions/dry-run`.
+- Add `POST /v1/conversions`.
+- Return adopted/excluded tracks and reasons as JSON.
+- Create a new playlist and add accepted tracks for non-dry-run conversion.
 
 ## Phase 6: Hardening
 
 - Add integration-style tests with mocked Apple Music API.
 - Improve partial failure handling.
 - Document manual acceptance test steps.
+- Add API examples for local development.

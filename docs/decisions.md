@@ -2,7 +2,7 @@
 
 ## ADR-001: Build v1 as CLI-only
 
-Status: Accepted
+Status: Superseded by ADR-007
 
 The first version will expose backend behavior through a command-line interface only. GUI, Web UI, and visualization are out of scope.
 
@@ -10,7 +10,7 @@ The first version will expose backend behavior through a command-line interface 
 
 Status: Accepted
 
-The backend and CLI will be implemented in Go to keep distribution, concurrency, and HTTP client behavior straightforward.
+The backend and HTTP server will be implemented in Go to keep distribution, concurrency, and HTTP client behavior straightforward.
 
 ## ADR-003: Create a New Playlist by Default
 
@@ -26,7 +26,7 @@ The first implementation will use metadata-based scoring with inclusion and excl
 
 ## ADR-005: Use localhost + MusicKit JS for User Authentication
 
-Status: Accepted
+Status: Superseded by ADR-009
 
 The CLI will run a local temporary authentication page to acquire the Apple Music Music User Token. Developer Token generation remains local and uses Apple Developer credentials.
 
@@ -35,3 +35,27 @@ The CLI will run a local temporary authentication page to acquire the Apple Musi
 Status: Accepted
 
 The repository starts with architect, backend, and qa agent definitions. This keeps ownership clear without creating unnecessary coordination overhead.
+
+## ADR-007: Expose v1 Behavior Through REST APIs
+
+Status: Accepted
+
+The project will be restructured as a Go Web API application. Playlist operations, track search, and conversion workflows will be executed through REST endpoints instead of CLI subcommands.
+
+## ADR-008: Load Developer Token From `.env`
+
+Status: Accepted
+
+The Web API version will read the Apple Music Developer Token from `.env` or process environment variables. It will not generate Developer Tokens from `.p8` files in v1, and it will not depend on OS user config, cache, or secrets directories.
+
+## ADR-009: Accept Music User Token Per Request
+
+Status: Accepted
+
+Apple Music user-library operations will receive the Music User Token through an HTTP request header such as `X-Music-User-Token`. The server will not persist user tokens in v1.
+
+## ADR-010: Provide Public Config Without Secret Values
+
+Status: Accepted
+
+The Web API will expose public runtime configuration through `GET /v1/config`, but it will not return secret values. Developer Token visibility is represented only as a boolean configured/not-configured flag.

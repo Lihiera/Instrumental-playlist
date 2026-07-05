@@ -2,9 +2,9 @@
 
 ## プロジェクト概要
 
-Instrumental Playlistは、Apple Musicの既存プレイリストをもとに、歌声のないインストゥルメンタル曲だけで構成された新しいプレイリストを作成するためのプロジェクトです。
+Instrumental Playlistは、Apple Musicの既存プレイリストをもとに、歌声のないインストゥルメンタル曲だけで構成された新しいプレイリストを作成するためのWeb APIアプリケーションです。
 
-このプロジェクトでは、Apple Music上のプレイリスト取得、楽曲検索、プレイリスト作成・編集といった機能を組み合わせ、元のプレイリストの雰囲気や楽曲の方向性をできるだけ保ちながら、作業や思考に向いたインストゥルメンタル版プレイリストを生成することを目指します。
+このプロジェクトでは、Apple Music上のプレイリスト取得、楽曲検索、プレイリスト作成・編集といった機能をREST APIとして提供し、元のプレイリストの雰囲気や楽曲の方向性をできるだけ保ちながら、作業や思考に向いたインストゥルメンタル版プレイリストを生成することを目指します。
 
 ## プロジェクトの動機
 
@@ -37,3 +37,40 @@ Apple Musicのプレイリストを、純粋なインストゥルメンタル曲
 progress.md を確認し、「backend」AGENTを使用してロードマップのPhase 0を完了したうえで、progress.md を更新してください。
 
 ...
+
+### project restructuring
+プロジェクトをWebアプリケーションとして再構成し、当初予定していた操作をREST API経由で実行できるようにしたいと考えています。
+そのため、Developer Tokenは.envファイル内に保存するだけでよく、システムディレクトリへアクセスする必要はありません。
+現在の開発進捗も踏まえたうえで、新しい開発計画を提示し、既存コードを変更するための手順も追加してください。
+
+## 開発方針
+
+現在の実装はGo製HTTPサーバーとして起動するWeb APIアプリケーションです。プレイリスト操作や変換処理は、今後REST API経由で実行できるようにします。
+
+Developer Tokenは`.env`から読み込みます。OSのユーザー設定ディレクトリやシステムディレクトリには依存しません。
+
+## ローカル実行
+
+`.env.example`を参考に`.env`を作成します。
+
+```env
+HTTP_ADDR=:8080
+APPLE_DEVELOPER_TOKEN=replace-with-apple-music-developer-token
+APPLE_STOREFRONT=us
+INSTRUMENTAL_THRESHOLD=0.75
+```
+
+サーバーを起動します。
+
+```sh
+go run ./cmd/instrumental-playlist
+```
+
+確認用エンドポイント:
+
+```sh
+curl http://localhost:8080/health
+curl http://localhost:8080/v1/config
+```
+
+`/v1/config`はDeveloper Tokenそのものを返さず、設定済みかどうかだけを返します。APIの詳細は[docs/api.md](docs/api.md)を参照してください。

@@ -7,8 +7,9 @@ Own the system shape, module boundaries, public interfaces, and durable design d
 ## Focus Areas
 
 - Apple Music API boundary and domain model.
-- Configuration and token storage policy.
-- Authentication flow design.
+- REST API boundary and request/response model.
+- `.env` configuration policy.
+- Developer Token and Music User Token handling.
 - Conversion workflow semantics.
 - Instrumental detection rule model.
 - Error taxonomy and partial failure behavior.
@@ -21,6 +22,7 @@ Own the system shape, module boundaries, public interfaces, and durable design d
 
 ## Guardrails
 
-- Do not introduce GUI or server product scope into v1.
+- Do not introduce GUI product scope into v1.
 - Do not make source playlist mutation the default behavior.
 - Do not require external lyric/audio/ML services for v1.
+- Do not require OS user config/cache/secrets directories for v1.
