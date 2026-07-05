@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -52,9 +53,9 @@ type spotifyPlaylistSearchResponse struct {
 	Playlists spotify.Page[json.RawMessage] `json:"playlists"`
 }
 
-func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
+func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore) {
 	router.GET("/v1/playlists", func(c *gin.Context) {
-		client, opts, ok := spotifyRequest(c, cfg)
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
@@ -68,7 +69,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
 	})
 
 	router.POST("/v1/playlists", func(c *gin.Context) {
-		client, opts, ok := spotifyRequest(c, cfg)
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
@@ -110,13 +111,13 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
 	})
 
 	router.GET("/v1/playlists/:playlistID/tracks", func(c *gin.Context) {
-		client, opts, ok := spotifyRequest(c, cfg)
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
 
 		playlistID := strings.TrimSpace(c.Param("playlistID"))
-		items, err := spotify.GetAllPages[json.RawMessage](c.Request.Context(), client, "/v1/playlists/"+url.PathEscape(playlistID)+"/tracks", opts)
+		items, err := spotify.GetAllPages[json.RawMessage](c.Request.Context(), client, "/v1/playlists/"+url.PathEscape(playlistID)+"/items", opts)
 		if err != nil {
 			writeSpotifyError(c, err)
 			return
@@ -125,7 +126,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
 	})
 
 	router.POST("/v1/playlists/:playlistID/tracks", func(c *gin.Context) {
-		client, opts, ok := spotifyRequest(c, cfg)
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
@@ -154,7 +155,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
 	})
 
 	router.DELETE("/v1/playlists/:playlistID/tracks", func(c *gin.Context) {
-		client, opts, ok := spotifyRequest(c, cfg)
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
@@ -187,7 +188,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
 	})
 
 	router.GET("/v1/search/tracks", func(c *gin.Context) {
-		client, opts, ok := spotifyRequest(c, cfg)
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
@@ -234,10 +235,9 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config) {
 	})
 }
 
-func spotifyRequest(c *gin.Context, cfg Config) (*spotify.Client, spotify.RequestOptions, bool) {
-	token, err := bearerToken(c.GetHeader("Authorization"))
-	if err != nil {
-		writeSpotifyError(c, err)
+func spotifyRequest(c *gin.Context, cfg Config, tokens *tokenStore) (*spotify.Client, spotify.RequestOptions, bool) {
+	token, ok := userAccessToken(c, tokens)
+	if !ok {
 		return nil, spotify.RequestOptions{}, false
 	}
 
@@ -248,6 +248,30 @@ func spotifyRequest(c *gin.Context, cfg Config) (*spotify.Client, spotify.Reques
 	}
 
 	return client, spotify.RequestOptions{AccessToken: token}, true
+}
+
+func userAccessToken(c *gin.Context, tokens *tokenStore) (string, bool) {
+	header := strings.TrimSpace(c.GetHeader("Authorization"))
+	if header != "" {
+		token, err := bearerToken(header)
+		if err != nil {
+			writeSpotifyError(c, err)
+			return "", false
+		}
+		return token, true
+	}
+
+	stored, ok := tokens.Latest()
+	if !ok || strings.TrimSpace(stored.AccessToken) == "" {
+		writeSpotifyError(c, spotify.ErrMissingAccessToken)
+		return "", false
+	}
+	if accessTokenExpired(stored, time.Now().UTC()) {
+		writeAPIError(c, http.StatusUnauthorized, "spotify_access_token_expired", "stored Spotify access token is expired; login again", 0)
+		return "", false
+	}
+
+	return strings.TrimSpace(stored.AccessToken), true
 }
 
 func bearerToken(header string) (string, error) {

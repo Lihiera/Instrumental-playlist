@@ -34,10 +34,11 @@ type AuthClient struct {
 
 // TokenResponse is the successful Spotify token response shape.
 type TokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-	Scope       string `json:"scope,omitempty"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope,omitempty"`
 }
 
 // AuthError preserves Spotify Accounts error details while redacting client secrets.
@@ -92,6 +93,36 @@ func (c *AuthClient) ClientCredentialsToken(ctx context.Context) (TokenResponse,
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 
+	return c.token(ctx, form)
+}
+
+// AuthorizationURL builds the Spotify Accounts redirect target for Authorization Code Flow.
+func (c *AuthClient) AuthorizationURL(redirectURI, state string, scopes []string) string {
+	q := url.Values{}
+	q.Set("response_type", "code")
+	q.Set("client_id", c.clientID)
+	q.Set("redirect_uri", strings.TrimSpace(redirectURI))
+	q.Set("state", strings.TrimSpace(state))
+	if len(scopes) > 0 {
+		q.Set("scope", strings.Join(scopes, " "))
+	}
+
+	u := c.accountsBaseURL.ResolveReference(&url.URL{Path: "/authorize"})
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// AuthorizationCodeToken exchanges an authorization code for user access and refresh tokens.
+func (c *AuthClient) AuthorizationCodeToken(ctx context.Context, code, redirectURI string) (TokenResponse, error) {
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", strings.TrimSpace(code))
+	form.Set("redirect_uri", strings.TrimSpace(redirectURI))
+
+	return c.token(ctx, form)
+}
+
+func (c *AuthClient) token(ctx context.Context, form url.Values) (TokenResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.accountsBaseURL.ResolveReference(&url.URL{Path: "/api/token"}).String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		return TokenResponse{}, err

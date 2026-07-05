@@ -45,6 +45,8 @@ Status: Complete
 
 ## Phase 4: Spotify Authorization Code Flow
 
+Status: Complete
+
 - Add `GET /oauth/spotify/login`.
 - Add `GET /oauth/spotify/callback`.
 - Generate and validate OAuth `state`.

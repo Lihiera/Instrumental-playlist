@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const handlerTestToken = "handler-spotify-token-secret"
@@ -49,6 +50,91 @@ func TestPlaylistsEndpointReturnsPaginatedSpotifyItems(t *testing.T) {
 	}
 }
 
+func TestPlaylistsEndpointUsesStoredUserAccessTokenWhenAuthorizationHeaderIsMissing(t *testing.T) {
+	const storedToken = "stored-user-access-token-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+storedToken {
+			t.Fatalf("Authorization = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"items":[{"id":"from-stored-token"}],"next":null}`))
+	}))
+	defer server.Close()
+
+	router := Handler(Config{SpotifyBaseURL: server.URL})
+	save := httptest.NewRecorder()
+	saveReq := httptest.NewRequest(http.MethodPost, "/v1/auth/tokens", strings.NewReader(`{"access_token":"`+storedToken+`","token_type":"Bearer","expires_in":3600}`))
+	saveReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(save, saveReq)
+	if save.Code != http.StatusCreated {
+		t.Fatalf("save status = %d body = %s", save.Code, save.Body.String())
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/playlists", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"from-stored-token"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), storedToken) {
+		t.Fatalf("response leaked stored token: %s", rec.Body.String())
+	}
+}
+
+func TestPlaylistsEndpointPrefersAuthorizationHeaderOverStoredToken(t *testing.T) {
+	const storedToken = "stored-user-access-token-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertBearer(t, r)
+		_, _ = w.Write([]byte(`{"items":[],"next":null}`))
+	}))
+	defer server.Close()
+
+	router := Handler(Config{SpotifyBaseURL: server.URL})
+	save := httptest.NewRecorder()
+	saveReq := httptest.NewRequest(http.MethodPost, "/v1/auth/tokens", strings.NewReader(`{"access_token":"`+storedToken+`","expires_in":3600}`))
+	saveReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(save, saveReq)
+	if save.Code != http.StatusCreated {
+		t.Fatalf("save status = %d body = %s", save.Code, save.Body.String())
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/playlists", nil)
+	req.Header.Set("Authorization", "Bearer "+handlerTestToken)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlaylistsEndpointRejectsExpiredStoredUserAccessToken(t *testing.T) {
+	tokens := newTokenStore()
+	if _, err := tokens.Save(storedToken{
+		AccessToken: "expired-user-access-token-secret",
+		ExpiresAt:   time.Now().UTC().Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+	router := NewEngine()
+	bindSpotifyHandlers(router, Config{SpotifyBaseURL: "http://spotify.test"}, tokens)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/playlists", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "expired-user-access-token-secret") {
+		t.Fatalf("response leaked expired token: %s", rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.String(), "spotify_access_token_expired")
+}
+
 func TestCreatePlaylistUsesCurrentSpotifyUser(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assertBearer(t, r)
@@ -83,6 +169,26 @@ func TestCreatePlaylistUsesCurrentSpotifyUser(t *testing.T) {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), `"id":"created-playlist"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestPlaylistTracksEndpointUsesCurrentSpotifyPlaylistItemsAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertBearer(t, r)
+		if r.URL.Path != "/v1/playlists/playlist-1/items" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"items":[{"track":{"id":"track-1"}}],"next":null}`))
+	}))
+	defer server.Close()
+
+	rec := performSpotifyRequest(t, server.URL, http.MethodGet, "/v1/playlists/playlist-1/tracks", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"track-1"`) {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
 }

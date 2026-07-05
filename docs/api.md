@@ -83,27 +83,89 @@ Returns metadata for a token stored in process memory. Access tokens and refresh
 }
 ```
 
-## Planned Authorization Code Flow Endpoints
+### `GET /v1/auth/status`
+
+Returns whether a Spotify user token is currently stored in process memory. Token values are not returned.
+
+Logged-out response:
+
+```json
+{
+  "logged_in": false
+}
+```
+
+Logged-in response:
+
+```json
+{
+  "logged_in": true,
+  "token": {
+    "id": "token-metadata-id",
+    "token_type": "Bearer",
+    "scope": "playlist-read-private playlist-modify-private playlist-modify-public",
+    "expires_at": "2026-07-06T12:00:00Z",
+    "has_refresh_token": true
+  },
+  "access_token_expired": false
+}
+```
+
+### `POST /v1/auth/logout`
+
+Clears all Spotify user tokens from process memory. The endpoint is idempotent and does not return token values.
+
+Response when a token was cleared:
+
+```json
+{
+  "logged_out": true
+}
+```
+
+Response when no token was stored:
+
+```json
+{
+  "logged_out": false
+}
+```
+
+## Authorization Code Flow Endpoints
 
 ### `GET /oauth/spotify/login`
 
-Phase 4 will add a login endpoint that creates an OAuth `state` value and redirects the user to Spotify Accounts authorization. The authorization request must include the playlist scopes needed by this API.
+Creates a one-time OAuth `state` value in process memory and redirects the user to Spotify Accounts authorization. The authorization request includes playlist scopes needed by this API:
+
+- `playlist-read-private`
+- `playlist-modify-public`
+- `playlist-modify-private`
 
 ### `GET /oauth/spotify/callback`
 
-Phase 4 will add a callback endpoint that validates `state`, exchanges Spotify's authorization `code` for access and refresh tokens, and stores token metadata without returning token values.
+Validates `state`, exchanges Spotify's authorization `code` for access and refresh tokens, and stores token metadata in process memory. Token values are not returned.
+
+Successful response: `200 text/html` success page for browser login flows. The page displays only safe token metadata:
+
+- token metadata id
+- token type
+- granted scopes
+- expiration time
+- whether a refresh token was saved
 
 Phase 5 will move callback state and token storage from process memory to Redis.
 
 ## Spotify Request Headers
 
-Spotify playlist and search endpoints accept a Spotify user access token through the standard `Authorization` header.
+Spotify playlist and user track search endpoints use a Spotify user access token. After a successful `/oauth/spotify/login` flow, the server uses the latest user token stored in process memory automatically.
+
+Clients may also pass a token explicitly through the standard `Authorization` header. An explicit header takes precedence over the stored in-memory token.
 
 ```http
 Authorization: Bearer replace-with-spotify-access-token
 ```
 
-The access token must include the scopes required by the operation. Playlist operations need `playlist-read-private`, `playlist-modify-public`, and/or `playlist-modify-private`.
+The access token must include the scopes required by the operation. Playlist operations need `playlist-read-private`, `playlist-modify-public`, and/or `playlist-modify-private`. If no stored token or explicit bearer token is available, these endpoints return `401 missing_spotify_access_token`. If the stored access token has expired, they return `401 spotify_access_token_expired`.
 
 ## Spotify Endpoints
 
@@ -135,7 +197,9 @@ Request:
 
 ### `GET /v1/playlists/{playlistID}/tracks`
 
-Returns playlist track items. The server follows Spotify pagination and returns collected items.
+Returns playlist track items. The public API keeps the `/tracks` route name, but the server calls Spotify's current `GET /v1/playlists/{playlist_id}/items` endpoint upstream. The server follows Spotify pagination and returns collected items.
+
+Spotify may return `403` when the authenticated user is neither the owner nor a collaborator of the playlist.
 
 ```json
 {
@@ -214,6 +278,7 @@ Errors use a stable JSON envelope.
 Common error codes:
 
 - `missing_spotify_access_token`: missing or malformed `Authorization: Bearer ...` header.
+- `spotify_access_token_expired`: stored Spotify access token is expired and the user needs to log in again.
 - `invalid_json`: request body is not valid JSON.
 - `invalid_request`: required query parameters or body fields are missing or invalid.
 - `spotify_api_error`: Spotify returned a non-success status.
@@ -222,6 +287,8 @@ Common error codes:
 - `spotify_auth_request_failed`: the Spotify Accounts request failed before a Spotify error payload was available.
 - `spotify_client_credentials_missing`: Spotify Client ID or Client Secret is not configured.
 - `spotify_auth_config_invalid`: Spotify Accounts client configuration is invalid.
+- `spotify_redirect_uri_missing`: Spotify Redirect URI is not configured.
+- `spotify_oauth_state_failed`: OAuth state could not be saved in process memory.
 - `spotify_client_config_invalid`: `SPOTIFY_BASE_URL` is invalid.
 - `token_store_failed`: token could not be saved in process memory.
 - `token_not_found`: no in-memory token exists for the requested token id.

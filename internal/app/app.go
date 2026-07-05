@@ -92,14 +92,15 @@ func NewEngine() *gin.Engine {
 // BindHandlers registers application HTTP handlers on an existing Gin engine.
 func BindHandlers(router *gin.Engine, cfg Config) {
 	tokens := newTokenStore()
+	oauthStates := newOAuthStateStore()
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	router.GET("/v1/config", func(c *gin.Context) {
 		c.JSON(http.StatusOK, cfg.Public())
 	})
-	bindAuthHandlers(router, cfg, tokens)
-	bindSpotifyHandlers(router, cfg)
+	bindAuthHandlers(router, cfg, tokens, oauthStates)
+	bindSpotifyHandlers(router, cfg, tokens)
 }
 
 // Handler builds a ready-to-serve Gin engine for tests and simple embedding.
@@ -130,6 +131,10 @@ Endpoints:
   GET /v1/config
   POST /v1/auth/tokens
   GET /v1/auth/tokens/{tokenID}
+  GET /v1/auth/status
+  POST /v1/auth/logout
+  GET /oauth/spotify/login
+  GET /oauth/spotify/callback
   GET /v1/playlists
   POST /v1/playlists
   GET /v1/playlists/{playlistID}/tracks

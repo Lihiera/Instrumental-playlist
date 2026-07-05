@@ -9,8 +9,9 @@ import (
 )
 
 type tokenStore struct {
-	mu     sync.RWMutex
-	tokens map[string]storedToken
+	mu            sync.RWMutex
+	tokens        map[string]storedToken
+	latestTokenID string
 }
 
 type storedToken struct {
@@ -46,6 +47,7 @@ func (s *tokenStore) Save(token storedToken) (tokenMetadata, error) {
 
 	s.mu.Lock()
 	s.tokens[id] = token
+	s.latestTokenID = id
 	s.mu.Unlock()
 
 	return metadataFor(token), nil
@@ -56,6 +58,23 @@ func (s *tokenStore) Get(id string) (storedToken, bool) {
 	defer s.mu.RUnlock()
 	token, ok := s.tokens[id]
 	return token, ok
+}
+
+func (s *tokenStore) Latest() (storedToken, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	token, ok := s.tokens[s.latestTokenID]
+	return token, ok
+}
+
+func (s *tokenStore) Clear() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hadTokens := len(s.tokens) > 0
+	s.tokens = map[string]storedToken{}
+	s.latestTokenID = ""
+	return hadTokens
 }
 
 func metadataFor(token storedToken) tokenMetadata {
