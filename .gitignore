@@ -23,6 +23,7 @@ secrets/
 reports/
 *.log
 .cache/
+.tmp/
 
 # Editor and OS files
 .DS_Store

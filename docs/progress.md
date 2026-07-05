@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Repository initialization is in progress. The project is not yet implementing Apple Music API behavior.
+Phase 0 repository initialization is complete. The project now has baseline metadata, agent definitions, and a minimal compilable Go CLI module; Apple Music API behavior is not implemented yet.
 
 ## Completed
 
@@ -12,11 +12,15 @@ Repository initialization is in progress. The project is not yet implementing Ap
 - Chose localhost + MusicKit JS as the Music User Token acquisition flow.
 - Chose new playlist creation as the default conversion target.
 - Chose three initial agent roles: architect, backend, and qa.
+- Confirmed the repository is on the `main` branch.
+- Added the base Go module.
+- Added a minimal `cmd/` and `internal/` Go package skeleton for backend CLI work.
+- Added focused tests for the initial CLI foundation behavior.
 
 ## Next Actions
 
-- Create Go project skeleton.
 - Implement configuration loading.
+- Define CLI command structure.
 - Implement Developer Token generation.
 - Implement localhost authentication flow.
 - Implement Apple Music API client foundation.
@@ -30,7 +34,7 @@ Repository initialization is in progress. The project is not yet implementing Ap
 
 ## Verification Checklist
 
-- `git status --short`
-- `git branch --show-current`
-- `go env GOMOD`
-- `go test ./...`
+- `git status --short`: shows only the expected Phase 0 working tree changes.
+- `git branch --show-current`: `main`
+- `go env GOMOD`: `C:\Users\lgj46\Documents\Instrumental-playlist\go.mod`
+- `go test ./...`: passed with `APPDATA` and `GOCACHE` pointed at workspace-local `.tmp` paths due local profile cache permissions.
