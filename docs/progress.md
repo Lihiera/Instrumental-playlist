@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The project has completed Phase 2 of the Spotify migration. The application starts as a Go HTTP server, reads Spotify runtime settings from `.env` and process environment variables, and now has an internal Spotify Web API client foundation.
+The project has completed Phase 3 of the Spotify migration and now has initial Spotify auth support. The application starts as a Go HTTP server, reads Spotify runtime settings from `.env` and process environment variables, exposes Spotify playlist and track search REST endpoints, uses server-side Client Credentials for no-login public playlist search, and stores user access/refresh tokens only in process memory for now.
 
 ## Completed
 
@@ -27,6 +27,20 @@ The project has completed Phase 2 of the Spotify migration. The application star
 - Added Spotify access-token request handling through `Authorization: Bearer <spotify_access_token>`.
 - Added Spotify JSON response decoding, `items`/`next` pagination traversal, retry handling for rate limits and temporary server failures, and structured Spotify API error parsing.
 - Added mocked Spotify Web API tests for auth headers, missing access tokens, secret redaction, pagination, retries, and non-retryable client errors.
+- Added `GET /v1/playlists`.
+- Added `POST /v1/playlists`.
+- Added `GET /v1/playlists/{playlistID}/tracks`.
+- Added `POST /v1/playlists/{playlistID}/tracks`.
+- Added `DELETE /v1/playlists/{playlistID}/tracks`.
+- Added `GET /v1/search/tracks?term=...`.
+- Added stable JSON API error responses for missing bearer tokens, invalid JSON, invalid requests, Spotify API errors, and Spotify request failures.
+- Added playlist write validation that limits add/remove requests to Spotify's 100 URI per request limit.
+- Added mocked handler tests for bearer token handling, playlist pagination, playlist creation, search validation, track deletion request bodies, Spotify error mapping, access-token redaction, and add-track batch limits.
+- Added `SPOTIFY_ACCOUNTS_BASE_URL` configuration.
+- Added `POST /v1/auth/tokens` and `GET /v1/auth/tokens/{tokenID}` for process-memory token storage metadata.
+- Added `GET /v1/noLogin/search/playlists?keyword=...` for no-login public playlist search with server-side app-only auth.
+- Added tests for Spotify Client Credentials requests, missing Spotify app credentials, auth error redaction, and in-memory token storage behavior.
+- Replaced unsafe `.env.example` credential values with placeholders.
 
 ## Phase 2 Spotify Migration Completed
 
@@ -34,15 +48,32 @@ The project has completed Phase 2 of the Spotify migration. The application star
 - `internal/spotify` owns upstream bearer auth, response decoding, pagination, retries, and error parsing.
 - Tests use `httptest` and do not require a real Spotify account.
 
+## Phase 3 Spotify Playlist and Search APIs Completed
+
+- Playlist and search handlers extract Spotify user access tokens from `Authorization: Bearer <spotify_access_token>`.
+- Playlist list and playlist track list endpoints follow Spotify pagination and return collected `items`.
+- Playlist creation fetches the current Spotify user through `/v1/me` before creating the playlist under that user.
+- Track add and delete endpoints require explicit Spotify URIs in the request body and reject batches over 100 URIs.
+- Spotify upstream errors are mapped to stable JSON responses without returning access tokens.
+
+## Spotify Auth and In-Memory Token Storage Added
+
+- Public playlist search uses server-side Client Credentials without exposing token handling to clients.
+- Access tokens and refresh tokens can be stored in process memory only.
+- Token metadata endpoints do not return stored access tokens or refresh tokens.
+
 ## Next Actions
 
-- Start Phase 3 playlist and search REST endpoints using the shared Spotify client.
-- Extract `Authorization` access tokens in REST handlers and map missing-token errors to stable JSON responses.
-- Add playlist write batching rules before implementing track-add endpoints.
+- Start Phase 4 Spotify Authorization Code Flow endpoints.
+- Add `GET /oauth/spotify/login` and `GET /oauth/spotify/callback`.
+- Generate and validate OAuth `state`.
+- Exchange authorization `code` for Spotify access and refresh tokens.
+- Prepare the token storage boundary so Phase 5 can replace process-memory storage with Redis.
 
 ## Open Questions
 
-- Whether OAuth login and token refresh should be implemented server-side after the first Spotify API client migration.
+- Exact post-callback response shape or redirect target after successful Spotify login.
+- Redis deployment details for local development and production-like environments.
 - Whether CORS is needed for a future browser client.
 - Whether conversion reports should be returned only in API responses or also saved to local files later.
 

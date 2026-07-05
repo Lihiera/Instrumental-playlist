@@ -30,21 +30,44 @@ Status: Complete
 
 ## Phase 3: Spotify Playlist and Search REST APIs
 
+Status: Complete
+
 - Add `GET /v1/playlists`.
 - Add `POST /v1/playlists`.
 - Add `GET /v1/playlists/{playlistID}/tracks`.
 - Add `POST /v1/playlists/{playlistID}/tracks`.
 - Add `DELETE /v1/playlists/{playlistID}/tracks`.
 - Add `GET /v1/search/tracks?term=...`.
+- Add `GET /v1/noLogin/search/playlists?keyword=...`.
 - Map upstream Spotify errors to stable JSON API responses.
+- Add Client Credentials Flow support for app-only Spotify access tokens.
+- Add process-memory token storage endpoints.
 
-## Phase 4: Instrumental Detection
+## Phase 4: Spotify Authorization Code Flow
+
+- Add `GET /oauth/spotify/login`.
+- Add `GET /oauth/spotify/callback`.
+- Generate and validate OAuth `state`.
+- Redirect users to Spotify Accounts authorization with playlist scopes.
+- Exchange callback `code` for access and refresh tokens.
+- Store token metadata through the existing token storage boundary.
+- Add mocked tests for login redirect, callback validation, token exchange, and secret redaction.
+
+## Phase 5: Redis Token and State Storage
+
+- Replace process-memory token storage with Redis-backed storage.
+- Store OAuth state, access token metadata, refresh tokens, and expiration data in Redis.
+- Add `.env` settings for Redis connection details.
+- Keep token values out of API responses and logs.
+- Add Redis-backed tests using a fake or interface-backed store.
+
+## Phase 6: Instrumental Detection
 
 - Implement default heuristic rules.
 - Add scoring and exclusion reasons.
 - Add tests for representative instrumental and non-instrumental metadata.
 
-## Phase 5: Conversion REST APIs
+## Phase 7: Conversion REST APIs
 
 - Add `POST /v1/conversions/dry-run`.
 - Add `POST /v1/conversions`.
@@ -52,7 +75,7 @@ Status: Complete
 - Create a new Spotify playlist and add accepted tracks for non-dry-run conversion.
 - Split Spotify track additions into batches of at most 100 URIs.
 
-## Phase 6: Hardening
+## Phase 8: Hardening
 
 - Add integration-style tests with mocked Spotify Web API.
 - Improve partial failure handling.

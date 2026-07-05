@@ -10,9 +10,11 @@ The current target is REST API behavior over HTTP, not CLI playlist operations. 
 
 - Runtime configuration is loaded from `.env` first, then process environment variables.
 - Process environment variables override `.env` values.
-- Planned Spotify settings are `HTTP_ADDR`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, and `SPOTIFY_BASE_URL`.
+- Planned Spotify settings are `HTTP_ADDR`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, `SPOTIFY_BASE_URL`, and Redis connection settings.
 - Secret values must never be returned by API responses or logs.
 - Spotify playlist and search endpoints should accept a user access token through `Authorization: Bearer <spotify_access_token>`.
+- Phase 4 adds Spotify Authorization Code Flow login/callback endpoints.
+- Phase 5 moves OAuth state and token storage to Redis.
 - The app currently exposes `GET /health` and `GET /v1/config`.
 - Gin is used for HTTP routing.
 - Tests use `httptest` and run Gin in test mode.
@@ -45,6 +47,7 @@ For ordinary implementation tasks, follow the combined guidance in this file and
 - When local profile cache permissions interfere with Go commands on Windows, point `APPDATA` and `GOCACHE` at workspace-local temporary directories for that command.
 - Use `httptest` for HTTP behavior.
 - Verify unsupported methods, malformed requests, missing tokens, secret redaction, pagination, retries, Spotify rate limits, and partial Spotify API failures as those features are added.
+- Verify OAuth state validation and Redis failure behavior as those features are added.
 - Prefer mocked Spotify Web API tests over tests that require a real Spotify account.
 
 ## Documentation Guidelines
@@ -56,7 +59,7 @@ For ordinary implementation tasks, follow the combined guidance in this file and
 
 ## Safety Rules
 
-- Never commit `.env`, Spotify Client Secrets, Spotify access tokens, refresh tokens, private keys, or generated secrets.
+- Never commit `.env`, Spotify Client Secrets, Spotify access tokens, refresh tokens, OAuth state secrets, private keys, or generated secrets.
 - Keep `.env.example` safe and placeholder-only.
 - Do not depend on OS user config/cache/secrets directories for Web API runtime behavior.
 - Do not overwrite or delete user work unless explicitly requested.

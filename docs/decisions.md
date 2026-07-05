@@ -97,3 +97,27 @@ The Spotify client retries `429`, `500`, `502`, `503`, and `504` responses with 
 Status: Accepted
 
 Spotify app credentials will be read from `.env` or process environment variables. `SPOTIFY_CLIENT_SECRET` must never be returned by API responses or logs. Public configuration may expose only whether the secret is configured.
+
+## ADR-017: Support Client Credentials as App-Only Spotify Auth
+
+Status: Accepted
+
+The API will expose a Spotify Client Credentials token endpoint for app-only Spotify Web API calls that do not access user resources. This flow does not replace per-user OAuth access tokens for playlist read/write behavior. Playlist and conversion endpoints that operate on a user's library must continue to receive `Authorization: Bearer <spotify_access_token>`.
+
+## ADR-018: Store Spotify Tokens in Process Memory for Now
+
+Status: Accepted, planned to be superseded by ADR-020
+
+Spotify access tokens and refresh tokens may be held in process memory for local development and early API wiring. The server will not persist these tokens to Redis, files, databases, OS secret stores, or logs in this phase. In-memory token storage is intentionally temporary and is lost when the process restarts.
+
+## ADR-019: Implement Spotify Authorization Code Flow Endpoints
+
+Status: Accepted
+
+Phase 4 will add server-side Spotify Authorization Code Flow endpoints. `GET /oauth/spotify/login` will redirect users to Spotify authorization with playlist scopes, and `GET /oauth/spotify/callback` will validate OAuth state and exchange the authorization code for access and refresh tokens.
+
+## ADR-020: Use Redis for OAuth State and Token Storage
+
+Status: Accepted
+
+Phase 5 will replace process-memory OAuth state and token storage with Redis-backed storage. Redis will hold OAuth state, token metadata, refresh tokens, and expiration data. Token values must remain absent from API responses and logs.

@@ -90,6 +90,7 @@ SPOTIFY_CLIENT_ID=client-id-from-file
 SPOTIFY_CLIENT_SECRET=secret-from-file
 SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
 SPOTIFY_BASE_URL=https://api.spotify.com
+SPOTIFY_ACCOUNTS_BASE_URL=https://accounts.spotify.com
 `)
 
 	cfg, err := LoadConfig(configOptions{
@@ -118,6 +119,9 @@ SPOTIFY_BASE_URL=https://api.spotify.com
 	if cfg.SpotifyBaseURL != "http://spotify.test" {
 		t.Fatalf("SpotifyBaseURL = %q", cfg.SpotifyBaseURL)
 	}
+	if cfg.SpotifyAccountsBaseURL != "https://accounts.spotify.com" {
+		t.Fatalf("SpotifyAccountsBaseURL = %q", cfg.SpotifyAccountsBaseURL)
+	}
 }
 
 // TestLoadConfigDefaultsSpotifyBaseURL verifies the upstream API default.
@@ -128,6 +132,9 @@ func TestLoadConfigDefaultsSpotifyBaseURL(t *testing.T) {
 	}
 	if cfg.SpotifyBaseURL != "https://api.spotify.com" {
 		t.Fatalf("SpotifyBaseURL = %q", cfg.SpotifyBaseURL)
+	}
+	if cfg.SpotifyAccountsBaseURL != "https://accounts.spotify.com" {
+		t.Fatalf("SpotifyAccountsBaseURL = %q", cfg.SpotifyAccountsBaseURL)
 	}
 }
 
@@ -169,7 +176,7 @@ func TestBindHandlersRegistersEndpoints(t *testing.T) {
 	}
 
 	BindHandlers(router, Config{})
-	if got := len(router.Routes()); got != 2 {
+	if got := len(router.Routes()); got != 11 {
 		t.Fatalf("routes after binding = %d", got)
 	}
 
@@ -185,11 +192,12 @@ func TestBindHandlersRegistersEndpoints(t *testing.T) {
 // TestConfigEndpointRedactsSpotifyClientSecret verifies that public config never exposes the secret value.
 func TestConfigEndpointRedactsSpotifyClientSecret(t *testing.T) {
 	cfg := Config{
-		HTTPAddr:            ":9090",
-		SpotifyClientID:     "client-id",
-		SpotifyClientSecret: "secret-token",
-		SpotifyRedirectURI:  "http://localhost:8080/callback",
-		SpotifyBaseURL:      "http://spotify.test",
+		HTTPAddr:               ":9090",
+		SpotifyClientID:        "client-id",
+		SpotifyClientSecret:    "secret-token",
+		SpotifyRedirectURI:     "http://localhost:8080/callback",
+		SpotifyBaseURL:         "http://spotify.test",
+		SpotifyAccountsBaseURL: "http://accounts.test",
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/config", nil)
@@ -215,6 +223,9 @@ func TestConfigEndpointRedactsSpotifyClientSecret(t *testing.T) {
 	}
 	if got.HTTPAddr != ":9090" || got.SpotifyRedirectURI != "http://localhost:8080/callback" || got.SpotifyBaseURL != "http://spotify.test" {
 		t.Fatalf("unexpected config response: %+v", got)
+	}
+	if got.SpotifyAccountsBaseURL != "http://accounts.test" {
+		t.Fatalf("unexpected auth/cache config response: %+v", got)
 	}
 }
 

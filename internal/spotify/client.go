@@ -112,7 +112,17 @@ func (c *Client) BaseURL() string {
 
 // GetJSON sends an authenticated GET request and decodes a successful JSON response into out.
 func (c *Client) GetJSON(ctx context.Context, path string, opts RequestOptions, out any) error {
-	return c.doJSON(ctx, http.MethodGet, path, opts, out)
+	return c.doJSON(ctx, http.MethodGet, path, opts, nil, out)
+}
+
+// PostJSON sends an authenticated JSON POST request and decodes a successful JSON response into out.
+func (c *Client) PostJSON(ctx context.Context, path string, opts RequestOptions, body any, out any) error {
+	return c.doJSON(ctx, http.MethodPost, path, opts, body, out)
+}
+
+// DeleteJSON sends an authenticated JSON DELETE request and decodes a successful JSON response into out.
+func (c *Client) DeleteJSON(ctx context.Context, path string, opts RequestOptions, body any, out any) error {
+	return c.doJSON(ctx, http.MethodDelete, path, opts, body, out)
 }
 
 // GetAllPages follows Spotify next links and concatenates items from each page.
@@ -130,16 +140,21 @@ func GetAllPages[T any](ctx context.Context, c *Client, path string, opts Reques
 	return all, nil
 }
 
-func (c *Client) doJSON(ctx context.Context, method, path string, opts RequestOptions, out any) error {
+func (c *Client) doJSON(ctx context.Context, method, path string, opts RequestOptions, body any, out any) error {
 	token := strings.TrimSpace(opts.AccessToken)
 	if token == "" {
 		return ErrMissingAccessToken
 	}
 
+	requestBody, err := encodeJSONBody(body)
+	if err != nil {
+		return err
+	}
+
 	var lastErr error
 	attempts := c.maxRetries + 1
 	for attempt := 0; attempt < attempts; attempt++ {
-		req, err := c.newRequest(ctx, method, path, token)
+		req, err := c.newRequest(ctx, method, path, token, requestBody)
 		if err != nil {
 			return err
 		}
@@ -188,19 +203,38 @@ func (c *Client) doJSON(ctx context.Context, method, path string, opts RequestOp
 	return lastErr
 }
 
-func (c *Client) newRequest(ctx context.Context, method, path, accessToken string) (*http.Request, error) {
+func (c *Client) newRequest(ctx context.Context, method, path, accessToken string, body []byte) (*http.Request, error) {
 	u, err := c.resolveURL(path)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), nil)
+	var requestBody io.Reader
+	if body != nil {
+		requestBody = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), requestBody)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set(headerAuthorization, "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	return req, nil
+}
+
+func encodeJSONBody(body any) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encode spotify request body: %w", err)
+	}
+	return encoded, nil
 }
 
 func (c *Client) resolveURL(path string) (*url.URL, error) {

@@ -91,12 +91,15 @@ func NewEngine() *gin.Engine {
 
 // BindHandlers registers application HTTP handlers on an existing Gin engine.
 func BindHandlers(router *gin.Engine, cfg Config) {
+	tokens := newTokenStore()
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	router.GET("/v1/config", func(c *gin.Context) {
 		c.JSON(http.StatusOK, cfg.Public())
 	})
+	bindAuthHandlers(router, cfg, tokens)
+	bindSpotifyHandlers(router, cfg)
 }
 
 // Handler builds a ready-to-serve Gin engine for tests and simple embedding.
@@ -120,9 +123,19 @@ Environment:
   SPOTIFY_CLIENT_SECRET
   SPOTIFY_REDIRECT_URI
   SPOTIFY_BASE_URL
+  SPOTIFY_ACCOUNTS_BASE_URL
 
 Endpoints:
   GET /health
   GET /v1/config
+  POST /v1/auth/tokens
+  GET /v1/auth/tokens/{tokenID}
+  GET /v1/playlists
+  POST /v1/playlists
+  GET /v1/playlists/{playlistID}/tracks
+  POST /v1/playlists/{playlistID}/tracks
+  DELETE /v1/playlists/{playlistID}/tracks
+  GET /v1/search/tracks?term=...
+  GET /v1/noLogin/search/playlists?keyword=...
 `, Name, Name, Name)
 }

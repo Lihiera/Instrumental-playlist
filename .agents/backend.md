@@ -13,6 +13,8 @@ Implement the Go Web API server, Spotify Web API integration, configuration, aut
 - `.env` and environment-based configuration.
 - Spotify app credential loading from configuration.
 - Spotify access token request-header handling.
+- Spotify Authorization Code Flow login/callback endpoints.
+- Redis-backed OAuth state and token storage.
 - Concise code comments for non-obvious intent, edge cases, and Spotify API constraints.
 - Unit and integration-style tests.
 
@@ -28,5 +30,6 @@ Implement the Go Web API server, Spotify Web API integration, configuration, aut
 - Avoid hardcoding user-specific paths.
 - Use Gin consistently for route registration, middleware, JSON responses, and method handling.
 - Add comments only where they clarify intent or constraints; avoid comments that merely restate the code.
+- Keep OAuth state validation and Redis storage boundaries explicit and testable.
 - Prefer dry-run for conversion workflows.
 - Treat Spotify Web API partial failures as first-class outcomes.

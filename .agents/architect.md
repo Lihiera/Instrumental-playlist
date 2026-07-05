@@ -10,6 +10,8 @@ Own the system shape, module boundaries, public interfaces, and durable design d
 - REST API boundary and request/response model.
 - `.env` configuration policy.
 - Spotify app credential and access token handling.
+- Spotify Authorization Code Flow state/callback design.
+- Redis-backed token and OAuth state storage design.
 - Conversion workflow semantics.
 - Instrumental detection rule model.
 - Error taxonomy and partial failure behavior.

@@ -2,6 +2,7 @@ package spotify
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,46 @@ func TestGetJSONRequiresSpotifyAccessToken(t *testing.T) {
 	err := client.GetJSON(context.Background(), "/v1/me/playlists", RequestOptions{}, nil)
 	if !errors.Is(err, ErrMissingAccessToken) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPostJSONSendsJSONBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("Content-Type = %q", got)
+		}
+		if got := r.Header.Get(headerAuthorization); got != "Bearer "+testAccessToken {
+			t.Fatalf("Authorization header = %q", got)
+		}
+		var body struct {
+			URIs []string `json:"uris"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if len(body.URIs) != 1 || body.URIs[0] != "spotify:track:one" {
+			t.Fatalf("unexpected body: %+v", body)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"snapshot_id":"snapshot-1"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	var got struct {
+		SnapshotID string `json:"snapshot_id"`
+	}
+	err := client.PostJSON(context.Background(), "/v1/playlists/playlist-1/tracks", RequestOptions{
+		AccessToken: testAccessToken,
+	}, map[string][]string{"uris": []string{"spotify:track:one"}}, &got)
+	if err != nil {
+		t.Fatalf("PostJSON returned error: %v", err)
+	}
+	if got.SnapshotID != "snapshot-1" {
+		t.Fatalf("SnapshotID = %q", got.SnapshotID)
 	}
 }
 

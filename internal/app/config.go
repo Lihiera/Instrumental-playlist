@@ -8,19 +8,21 @@ import (
 )
 
 const (
-	envHTTPAddr            = "HTTP_ADDR"
-	envSpotifyClientID     = "SPOTIFY_CLIENT_ID"
-	envSpotifyClientSecret = "SPOTIFY_CLIENT_SECRET"
-	envSpotifyRedirectURI  = "SPOTIFY_REDIRECT_URI"
-	envSpotifyBaseURL      = "SPOTIFY_BASE_URL"
+	envHTTPAddr               = "HTTP_ADDR"
+	envSpotifyClientID        = "SPOTIFY_CLIENT_ID"
+	envSpotifyClientSecret    = "SPOTIFY_CLIENT_SECRET"
+	envSpotifyRedirectURI     = "SPOTIFY_REDIRECT_URI"
+	envSpotifyBaseURL         = "SPOTIFY_BASE_URL"
+	envSpotifyAccountsBaseURL = "SPOTIFY_ACCOUNTS_BASE_URL"
 )
 
 type Config struct {
-	HTTPAddr            string
-	SpotifyClientID     string
-	SpotifyClientSecret string
-	SpotifyRedirectURI  string
-	SpotifyBaseURL      string
+	HTTPAddr               string
+	SpotifyClientID        string
+	SpotifyClientSecret    string
+	SpotifyRedirectURI     string
+	SpotifyBaseURL         string
+	SpotifyAccountsBaseURL string
 }
 
 type PublicConfig struct {
@@ -29,6 +31,7 @@ type PublicConfig struct {
 	SpotifyClientSecretConfigured bool   `json:"spotify_client_secret_configured"`
 	SpotifyRedirectURI            string `json:"spotify_redirect_uri"`
 	SpotifyBaseURL                string `json:"spotify_base_url"`
+	SpotifyAccountsBaseURL        string `json:"spotify_accounts_base_url"`
 }
 
 type configOptions struct {
@@ -39,8 +42,9 @@ type configOptions struct {
 // LoadConfig builds the runtime configuration from defaults, .env values, and process environment overrides.
 func LoadConfig(opts configOptions) (Config, error) {
 	cfg := Config{
-		HTTPAddr:       ":8080",
-		SpotifyBaseURL: "https://api.spotify.com",
+		HTTPAddr:               ":8080",
+		SpotifyBaseURL:         "https://api.spotify.com",
+		SpotifyAccountsBaseURL: "https://accounts.spotify.com",
 	}
 
 	env, err := loadDotenv(opts.DotenvPath)
@@ -64,6 +68,7 @@ func (cfg Config) Public() PublicConfig {
 		SpotifyClientSecretConfigured: strings.TrimSpace(cfg.SpotifyClientSecret) != "",
 		SpotifyRedirectURI:            cfg.SpotifyRedirectURI,
 		SpotifyBaseURL:                cfg.SpotifyBaseURL,
+		SpotifyAccountsBaseURL:        cfg.SpotifyAccountsBaseURL,
 	}
 }
 
@@ -135,6 +140,9 @@ func applyEnv(cfg *Config, env map[string]string) error {
 	}
 	if value := strings.TrimSpace(env[envSpotifyBaseURL]); value != "" {
 		cfg.SpotifyBaseURL = value
+	}
+	if value := strings.TrimSpace(env[envSpotifyAccountsBaseURL]); value != "" {
+		cfg.SpotifyAccountsBaseURL = value
 	}
 
 	return nil
