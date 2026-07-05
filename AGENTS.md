@@ -2,7 +2,7 @@
 
 ## Project Direction
 
-Instrumental Playlist is a Go Web API application for creating instrumental-only Apple Music playlists from existing playlists.
+Instrumental Playlist is a Go Web API application for creating instrumental-only Spotify playlists from existing Spotify playlists.
 
 The current target is REST API behavior over HTTP, not CLI playlist operations. The executable in `cmd/instrumental-playlist` should start the HTTP server. Application wiring currently lives in `internal/app`.
 
@@ -10,19 +10,20 @@ The current target is REST API behavior over HTTP, not CLI playlist operations. 
 
 - Runtime configuration is loaded from `.env` first, then process environment variables.
 - Process environment variables override `.env` values.
-- Supported settings are `HTTP_ADDR`, `APPLE_DEVELOPER_TOKEN`, and `APPLE_STOREFRONT`.
-- Developer Token values must never be returned by API responses or logs.
-- Music User Token should be accepted per request, using `X-Music-User-Token` for future Apple Music user-library endpoints.
+- Planned Spotify settings are `HTTP_ADDR`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, and `SPOTIFY_BASE_URL`.
+- Secret values must never be returned by API responses or logs.
+- Spotify playlist and search endpoints should accept a user access token through `Authorization: Bearer <spotify_access_token>`.
 - The app currently exposes `GET /health` and `GET /v1/config`.
 - Gin is used for HTTP routing.
 - Tests use `httptest` and run Gin in test mode.
+- The current `internal/spotify` package owns Spotify Web API client behavior.
 
 ## Agent Roles
 
 Use the detailed role files under `.agents/` when a task needs role-specific focus:
 
 - `.agents/architect.md`: API boundaries, configuration policy, token handling, and durable design decisions.
-- `.agents/backend.md`: Go Web API implementation, Apple Music API client, handlers, and tests.
+- `.agents/backend.md`: Go Web API implementation, Spotify Web API client, handlers, and tests.
 - `.agents/qa.md`: endpoint behavior, dry-run safety, secret redaction, and failure-mode coverage.
 
 For ordinary implementation tasks, follow the combined guidance in this file and keep changes scoped.
@@ -30,7 +31,7 @@ For ordinary implementation tasks, follow the combined guidance in this file and
 ## Coding Guidelines
 
 - Prefer small packages with explicit boundaries under `internal/`.
-- Keep HTTP handlers thin; move Apple Music behavior, conversion logic, and instrumental scoring into separate packages as they grow.
+- Keep HTTP handlers thin; move Spotify behavior, conversion logic, and instrumental scoring into separate packages as they grow.
 - Keep configuration parsing deterministic and testable.
 - Return public configuration through explicit DTOs such as `PublicConfig`; do not serialize secret-bearing structs directly.
 - Treat dry-run behavior as a first-class workflow for conversion endpoints.
@@ -43,8 +44,8 @@ For ordinary implementation tasks, follow the combined guidance in this file and
 - Run `go test ./...` after code changes.
 - When local profile cache permissions interfere with Go commands on Windows, point `APPDATA` and `GOCACHE` at workspace-local temporary directories for that command.
 - Use `httptest` for HTTP behavior.
-- Verify unsupported methods, malformed requests, missing tokens, secret redaction, pagination, retries, and partial Apple Music API failures as those features are added.
-- Prefer mocked Apple Music API tests over tests that require a real Apple Music account.
+- Verify unsupported methods, malformed requests, missing tokens, secret redaction, pagination, retries, Spotify rate limits, and partial Spotify API failures as those features are added.
+- Prefer mocked Spotify Web API tests over tests that require a real Spotify account.
 
 ## Documentation Guidelines
 
@@ -55,7 +56,7 @@ For ordinary implementation tasks, follow the combined guidance in this file and
 
 ## Safety Rules
 
-- Never commit `.env`, Developer Tokens, Music User Tokens, private keys, or generated secrets.
+- Never commit `.env`, Spotify Client Secrets, Spotify access tokens, refresh tokens, private keys, or generated secrets.
 - Keep `.env.example` safe and placeholder-only.
 - Do not depend on OS user config/cache/secrets directories for Web API runtime behavior.
 - Do not overwrite or delete user work unless explicitly requested.

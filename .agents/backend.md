@@ -2,16 +2,18 @@
 
 ## Responsibility
 
-Implement the Go Web API server, Apple Music API integration, configuration, authentication boundary, and conversion workflow.
+Implement the Go Web API server, Spotify Web API integration, configuration, authentication boundary, and conversion workflow.
 
 ## Focus Areas
 
 - Go module and package structure.
 - HTTP server startup and REST endpoint implementation.
+- Gin router and middleware usage for HTTP API behavior.
 - HTTP client, JSON parsing, pagination, retries, and rate limiting.
 - `.env` and environment-based configuration.
-- Developer Token loading from configuration.
-- Music User Token request-header handling.
+- Spotify app credential loading from configuration.
+- Spotify access token request-header handling.
+- Concise code comments for non-obvious intent, edge cases, and Spotify API constraints.
 - Unit and integration-style tests.
 
 ## Expected Outputs
@@ -24,5 +26,7 @@ Implement the Go Web API server, Apple Music API integration, configuration, aut
 
 - Keep secrets out of tracked files.
 - Avoid hardcoding user-specific paths.
+- Use Gin consistently for route registration, middleware, JSON responses, and method handling.
+- Add comments only where they clarify intent or constraints; avoid comments that merely restate the code.
 - Prefer dry-run for conversion workflows.
-- Treat Apple Music API partial failures as first-class outcomes.
+- Treat Spotify Web API partial failures as first-class outcomes.

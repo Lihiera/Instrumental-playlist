@@ -61,7 +61,7 @@ func TestRunHelpPrintsWebAPIUsage(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"Usage:", "GET /health", "APPLE_DEVELOPER_TOKEN"} {
+	for _, want := range []string{"Usage:", "GET /health", "SPOTIFY_CLIENT_ID"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("usage output missing %q:\n%s", want, out)
 		}
@@ -86,14 +86,16 @@ func TestLoadConfigReadsDotenvAndEnvironmentOverrides(t *testing.T) {
 	dotenvPath := filepath.Join(t.TempDir(), ".env")
 	writeFile(t, dotenvPath, `
 HTTP_ADDR=:8081
-APPLE_DEVELOPER_TOKEN=token-from-file
-APPLE_STOREFRONT=us
+SPOTIFY_CLIENT_ID=client-id-from-file
+SPOTIFY_CLIENT_SECRET=secret-from-file
+SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
+SPOTIFY_BASE_URL=https://api.spotify.com
 `)
 
 	cfg, err := LoadConfig(configOptions{
 		Environ: []string{
 			envHTTPAddr + "=127.0.0.1:9090",
-			envAppleStorefront + "=jp",
+			envSpotifyBaseURL + "=http://spotify.test",
 		},
 		DotenvPath: dotenvPath,
 	})
@@ -104,22 +106,28 @@ APPLE_STOREFRONT=us
 	if cfg.HTTPAddr != "127.0.0.1:9090" {
 		t.Fatalf("HTTPAddr = %q", cfg.HTTPAddr)
 	}
-	if cfg.AppleDeveloperToken != "token-from-file" {
-		t.Fatalf("AppleDeveloperToken = %q", cfg.AppleDeveloperToken)
+	if cfg.SpotifyClientID != "client-id-from-file" {
+		t.Fatalf("SpotifyClientID = %q", cfg.SpotifyClientID)
 	}
-	if cfg.AppleStorefront != "jp" {
-		t.Fatalf("AppleStorefront = %q", cfg.AppleStorefront)
+	if cfg.SpotifyClientSecret != "secret-from-file" {
+		t.Fatalf("SpotifyClientSecret = %q", cfg.SpotifyClientSecret)
+	}
+	if cfg.SpotifyRedirectURI != "http://localhost:8080/callback" {
+		t.Fatalf("SpotifyRedirectURI = %q", cfg.SpotifyRedirectURI)
+	}
+	if cfg.SpotifyBaseURL != "http://spotify.test" {
+		t.Fatalf("SpotifyBaseURL = %q", cfg.SpotifyBaseURL)
 	}
 }
 
-// TestLoadConfigDefaultsAppleStorefrontToJP verifies the initial storefront default.
-func TestLoadConfigDefaultsAppleStorefrontToJP(t *testing.T) {
+// TestLoadConfigDefaultsSpotifyBaseURL verifies the upstream API default.
+func TestLoadConfigDefaultsSpotifyBaseURL(t *testing.T) {
 	cfg, err := LoadConfig(configOptions{DotenvPath: filepath.Join(t.TempDir(), "missing.env")})
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
-	if cfg.AppleStorefront != "jp" {
-		t.Fatalf("AppleStorefront = %q", cfg.AppleStorefront)
+	if cfg.SpotifyBaseURL != "https://api.spotify.com" {
+		t.Fatalf("SpotifyBaseURL = %q", cfg.SpotifyBaseURL)
 	}
 }
 
@@ -174,12 +182,14 @@ func TestBindHandlersRegistersEndpoints(t *testing.T) {
 	}
 }
 
-// TestConfigEndpointRedactsDeveloperToken verifies that public config never exposes the token value.
-func TestConfigEndpointRedactsDeveloperToken(t *testing.T) {
+// TestConfigEndpointRedactsSpotifyClientSecret verifies that public config never exposes the secret value.
+func TestConfigEndpointRedactsSpotifyClientSecret(t *testing.T) {
 	cfg := Config{
 		HTTPAddr:            ":9090",
-		AppleDeveloperToken: "secret-token",
-		AppleStorefront:     "jp",
+		SpotifyClientID:     "client-id",
+		SpotifyClientSecret: "secret-token",
+		SpotifyRedirectURI:  "http://localhost:8080/callback",
+		SpotifyBaseURL:      "http://spotify.test",
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/config", nil)
@@ -190,18 +200,47 @@ func TestConfigEndpointRedactsDeveloperToken(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	if strings.Contains(rec.Body.String(), "secret-token") {
-		t.Fatalf("config response leaked token: %s", rec.Body.String())
+		t.Fatalf("config response leaked secret: %s", rec.Body.String())
 	}
 
 	var got PublicConfig
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !got.AppleDeveloperTokenConfigured {
-		t.Fatal("AppleDeveloperTokenConfigured = false")
+	if !got.SpotifyClientIDConfigured {
+		t.Fatal("SpotifyClientIDConfigured = false")
 	}
-	if got.HTTPAddr != ":9090" || got.AppleStorefront != "jp" {
+	if !got.SpotifyClientSecretConfigured {
+		t.Fatal("SpotifyClientSecretConfigured = false")
+	}
+	if got.HTTPAddr != ":9090" || got.SpotifyRedirectURI != "http://localhost:8080/callback" || got.SpotifyBaseURL != "http://spotify.test" {
 		t.Fatalf("unexpected config response: %+v", got)
+	}
+}
+
+// TestConfigBuildsSpotifyClient verifies application wiring from runtime config into the API client.
+func TestConfigBuildsSpotifyClient(t *testing.T) {
+	cfg := Config{
+		SpotifyBaseURL: "http://spotify.test",
+	}
+
+	client, err := cfg.SpotifyClient()
+	if err != nil {
+		t.Fatalf("SpotifyClient returned error: %v", err)
+	}
+	if got := client.BaseURL(); got != "http://spotify.test" {
+		t.Fatalf("BaseURL = %q", got)
+	}
+}
+
+// TestConfigRejectsInvalidSpotifyBaseURL verifies API client wiring rejects invalid upstream URLs.
+func TestConfigRejectsInvalidSpotifyBaseURL(t *testing.T) {
+	_, err := (Config{SpotifyBaseURL: "://bad"}).SpotifyClient()
+	if err == nil {
+		t.Fatal("SpotifyClient returned nil")
+	}
+	if strings.Contains(err.Error(), "secret") {
+		t.Fatalf("error leaked secret-shaped value: %v", err)
 	}
 }
 

@@ -2,6 +2,8 @@
 
 ## Phase 0: Repository Initialization
 
+Status: Complete
+
 - Initialize Git repository on `main`.
 - Add project metadata, progress tracking, and agent definitions.
 - Add base Go module.
@@ -10,27 +12,31 @@
 
 Status: Complete
 
-- Replace the current CLI command foundation with an HTTP server foundation.
+- Replace the CLI command foundation with an HTTP server foundation.
 - Load runtime settings from `.env` and process environment variables.
 - Remove dependency on OS user config/cache directories for application behavior.
 - Add `/health` and `/v1/config` endpoints.
-- Ensure secret values such as Developer Token are never returned by public config responses.
+- Ensure secret values are never returned by public config responses.
 
-## Phase 2: Apple Music API Client
+## Phase 2: Spotify API Client Migration
 
-Status: Next
+Status: Complete
 
-- Implement shared HTTP client with Developer Token authentication.
-- Accept Music User Token from request headers for user-library operations.
-- Handle JSON responses, pagination, rate limiting, retries, and Apple Music API errors.
+- Replace `internal/applemusic` with `internal/spotify`.
+- Replace Apple Music Developer Token and Music User Token behavior with Spotify OAuth access token behavior.
+- Read Spotify app settings from `.env`.
+- Send upstream Spotify requests with `Authorization: Bearer <spotify_access_token>`.
+- Handle Spotify JSON responses, `items`/`next` pagination, rate limits, retries, and Spotify error payloads.
 
-## Phase 3: Playlist and Search REST APIs
+## Phase 3: Spotify Playlist and Search REST APIs
 
 - Add `GET /v1/playlists`.
 - Add `POST /v1/playlists`.
-- Add `DELETE /v1/playlists/{playlistID}`.
+- Add `GET /v1/playlists/{playlistID}/tracks`.
+- Add `POST /v1/playlists/{playlistID}/tracks`.
+- Add `DELETE /v1/playlists/{playlistID}/tracks`.
 - Add `GET /v1/search/tracks?term=...`.
-- Add playlist track read/add/remove endpoints.
+- Map upstream Spotify errors to stable JSON API responses.
 
 ## Phase 4: Instrumental Detection
 
@@ -43,11 +49,12 @@ Status: Next
 - Add `POST /v1/conversions/dry-run`.
 - Add `POST /v1/conversions`.
 - Return adopted/excluded tracks and reasons as JSON.
-- Create a new playlist and add accepted tracks for non-dry-run conversion.
+- Create a new Spotify playlist and add accepted tracks for non-dry-run conversion.
+- Split Spotify track additions into batches of at most 100 URIs.
 
 ## Phase 6: Hardening
 
-- Add integration-style tests with mocked Apple Music API.
+- Add integration-style tests with mocked Spotify Web API.
 - Improve partial failure handling.
-- Document manual acceptance test steps.
+- Document manual acceptance test steps and required Spotify scopes.
 - Add API examples for local development.

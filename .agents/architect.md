@@ -6,10 +6,10 @@ Own the system shape, module boundaries, public interfaces, and durable design d
 
 ## Focus Areas
 
-- Apple Music API boundary and domain model.
+- Spotify Web API boundary and domain model.
 - REST API boundary and request/response model.
 - `.env` configuration policy.
-- Developer Token and Music User Token handling.
+- Spotify app credential and access token handling.
 - Conversion workflow semantics.
 - Instrumental detection rule model.
 - Error taxonomy and partial failure behavior.

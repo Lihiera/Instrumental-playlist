@@ -2,52 +2,23 @@
 
 ## プロジェクト概要
 
-Instrumental Playlistは、Apple Musicの既存プレイリストをもとに、歌声のないインストゥルメンタル曲だけで構成された新しいプレイリストを作成するためのWeb APIアプリケーションです。
+Instrumental Playlistは、Spotifyの既存プレイリストをもとに、歌声のないインストゥルメンタル曲だけで構成された新しいプレイリストを作成するためのWeb APIアプリケーションです。
 
-このプロジェクトでは、Apple Music上のプレイリスト取得、楽曲検索、プレイリスト作成・編集といった機能をREST APIとして提供し、元のプレイリストの雰囲気や楽曲の方向性をできるだけ保ちながら、作業や思考に向いたインストゥルメンタル版プレイリストを生成することを目指します。
+このプロジェクトでは、Spotify上のプレイリスト取得、楽曲検索、プレイリスト作成・編集といった機能をREST APIとして提供し、元のプレイリストの雰囲気や楽曲の方向性をできるだけ保ちながら、作業や思考に向いたインストゥルメンタル版プレイリストを生成することを目指します。
 
 ## プロジェクトの動機
 
 考え事や作業に集中したいとき、歌声のないインストゥルメンタル音楽は、思考を妨げずに音楽を楽しむための有効な選択肢になります。
 
-Apple Musicには、ポップス、クラシック、サウンドトラックなど多様なプレイリストがあり、ポップス楽曲のインストゥルメンタル版も存在します。一方で、特定のポップス・プレイリストに対応するインストゥルメンタル版プレイリストはほとんど用意されていません。
+Spotifyには、ポップス、クラシック、サウンドトラックなど多様なプレイリストがあり、ポップス楽曲のインストゥルメンタル版も存在します。一方で、特定のポップス・プレイリストに対応するインストゥルメンタル版プレイリストはほとんど用意されていません。
 
 このプロジェクトは、好きなポップスのメロディーや雰囲気を楽しみながら、集中して考え事や作業をしたい人を支援することを目的としています。
 
-## Prompt
-
-### 計画段階
-Apple Musicのプレイリストを、純粋なインストゥルメンタル曲のみで構成されたプレイリストへ変換するシステムを設計したいと考えています。
-
-まずはGo言語を使用して、バックエンド機能のみを備えたバージョンを実装する予定です。変換機能はコマンドラインツールから呼び出す形とし、フロントエンドやGUIによる可視化・操作機能は実装しません。
-
-基本モジュールとして、以下の機能を想定しています。
-
-- ユーザー認証
-- プレイリスト一覧の取得
-- プレイリストの新規作成・削除
-- 楽曲検索
-- プレイリスト内の楽曲編集
-
-その後、これらの基本モジュールを組み合わせて、既存のプレイリストをインストゥルメンタル版のプレイリストへ変換する機能を実装します。
-
-このシステムについて、追加で必要となるモジュールを補足したうえで、具体的な設計案と実装手順を策定してください。
-
-### Phase 0
-progress.md を確認し、「backend」AGENTを使用してロードマップのPhase 0を完了したうえで、progress.md を更新してください。
-
-...
-
-### project restructuring
-プロジェクトをWebアプリケーションとして再構成し、当初予定していた操作をREST API経由で実行できるようにしたいと考えています。
-そのため、Developer Tokenは.envファイル内に保存するだけでよく、システムディレクトリへアクセスする必要はありません。
-現在の開発進捗も踏まえたうえで、新しい開発計画を提示し、既存コードを変更するための手順も追加してください。
-
 ## 開発方針
 
-現在の実装はGo製HTTPサーバーとして起動するWeb APIアプリケーションです。プレイリスト操作や変換処理は、今後REST API経由で実行できるようにします。
+現在の実装はGo製HTTPサーバーとして起動するWeb APIアプリケーションです。プレイリスト操作や変換処理は、Spotify Web APIを内部で呼び出すREST APIとして提供します。
 
-Developer Tokenは`.env`から読み込みます。OSのユーザー設定ディレクトリやシステムディレクトリには依存しません。
+Spotifyのプレイリスト編集にはユーザー承認済みアクセストークンが必要です。今後追加するプレイリスト系REST APIでは、クライアントから`Authorization: Bearer <spotify_access_token>`を受け取ります。Spotify Client Secretなどの秘密情報は`.env`から読み込み、APIレスポンスには返しません。
 
 ## ローカル実行
 
@@ -55,8 +26,10 @@ Developer Tokenは`.env`から読み込みます。OSのユーザー設定ディ
 
 ```env
 HTTP_ADDR=:8080
-APPLE_DEVELOPER_TOKEN=replace-with-apple-music-developer-token
-APPLE_STOREFRONT=jp
+SPOTIFY_CLIENT_ID=replace-with-spotify-client-id
+SPOTIFY_CLIENT_SECRET=replace-with-spotify-client-secret
+SPOTIFY_REDIRECT_URI=http://localhost:8080/auth/spotify/callback
+SPOTIFY_BASE_URL=https://api.spotify.com
 ```
 
 サーバーを起動します。
@@ -72,4 +45,10 @@ curl http://localhost:8080/health
 curl http://localhost:8080/v1/config
 ```
 
-`/v1/config`はDeveloper Tokenそのものを返さず、設定済みかどうかだけを返します。APIの詳細は[docs/api.md](docs/api.md)を参照してください。
+`/v1/config`はSpotify Client Secretそのものを返さず、設定済みかどうかだけを返します。APIの詳細は[docs/api.md](docs/api.md)を参照してください。
+
+## Spotify Web API連携
+
+Phase 2ではSpotify Web APIクライアント基盤を実装済みです。内部クライアントはリクエストごとの`Authorization: Bearer <spotify_access_token>`、JSONレスポンス、ページネーション、レート制限時のリトライ、Spotifyエラー形式を扱います。
+
+Spotify版では、プレイリスト一覧、検索、作成、曲追加・削除などの公開REST APIをPhase 3以降で追加します。必要なSpotifyスコープは主に`playlist-read-private`、`playlist-modify-public`、`playlist-modify-private`です。

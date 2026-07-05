@@ -8,11 +8,13 @@ Validate behavior, acceptance criteria, edge cases, and release readiness.
 
 - Conversion dry-run endpoint correctness.
 - Instrumental inclusion and exclusion reasons.
-- Missing/invalid Developer Token and Music User Token handling.
+- Missing/invalid Spotify app credentials and access token handling.
+- Gin route behavior, middleware behavior, JSON response shapes, and method restrictions.
 - API pagination, retries, rate limits, and partial failures.
 - Duplicate track handling.
 - Safety around playlist deletion and source playlist preservation.
 - Secret redaction in config and error responses.
+- Whether code comments explain non-obvious behavior without duplicating the implementation.
 
 ## Expected Outputs
 
@@ -22,7 +24,9 @@ Validate behavior, acceptance criteria, edge cases, and release readiness.
 
 ## Guardrails
 
-- Do not rely only on real Apple Music calls when mock tests can cover behavior.
+- Do not rely only on real Spotify calls when mock tests can cover behavior.
+- Use `httptest` with Gin test mode for HTTP endpoint tests.
+- Flag missing comments when Spotify API constraints, retry behavior, or destructive-operation safety are not clear from the code.
 - Confirm that destructive endpoints require explicit user intent.
 - Confirm reports are useful for auditing conversion results.
-- Confirm Developer Token is never returned by API responses.
+- Confirm Spotify Client Secret and access tokens are never returned by API responses.

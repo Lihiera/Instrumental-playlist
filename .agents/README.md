@@ -16,6 +16,6 @@ Agents should update `docs/progress.md` when meaningful work is completed and re
 - Keep credentials and tokens out of the repository.
 - Default to non-destructive playlist operations.
 - Make instrumental inclusion/exclusion reasons visible to users.
-- Use dry-run before making Apple Music library changes.
-- Keep Developer Token in `.env` or process environment variables.
-- Accept Music User Token per request instead of persisting it server-side.
+- Use dry-run before making Spotify playlist changes.
+- Keep Spotify app credentials in `.env` or process environment variables.
+- Accept Spotify access tokens per request instead of persisting them server-side.

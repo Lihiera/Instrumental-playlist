@@ -44,13 +44,13 @@ The project will be restructured as a Go Web API application. Playlist operation
 
 ## ADR-008: Load Developer Token From `.env`
 
-Status: Accepted
+Status: Superseded by ADR-013
 
 The Web API version will read the Apple Music Developer Token from `.env` or process environment variables. It will not generate Developer Tokens from `.p8` files in v1, and it will not depend on OS user config, cache, or secrets directories.
 
 ## ADR-009: Accept Music User Token Per Request
 
-Status: Accepted
+Status: Superseded by ADR-014
 
 Apple Music user-library operations will receive the Music User Token through an HTTP request header such as `X-Music-User-Token`. The server will not persist user tokens in v1.
 
@@ -58,4 +58,42 @@ Apple Music user-library operations will receive the Music User Token through an
 
 Status: Accepted
 
-The Web API will expose public runtime configuration through `GET /v1/config`, but it will not return secret values. Developer Token visibility is represented only as a boolean configured/not-configured flag.
+The Web API will expose public runtime configuration through `GET /v1/config`, but it will not return secret values. Secret visibility is represented only as configured/not-configured flags.
+
+## ADR-011: Keep Apple Music API Access Behind an Internal Client
+
+Status: Superseded by ADR-015
+
+Apple Music API calls will go through `internal/applemusic`. The package owns Developer Token authentication, optional per-request Music User Token headers, JSON decoding, pagination traversal, retry behavior, and Apple Music API error parsing. REST handlers should depend on this client boundary instead of constructing raw Apple Music HTTP requests directly.
+
+## ADR-012: Retry Only Rate Limits and Temporary Apple Music Failures by Default
+
+Status: Superseded by ADR-015
+
+The Apple Music client retries `429`, `500`, `502`, `503`, and `504` responses with a small exponential backoff and honors `Retry-After` when Apple provides it. Permanent `4xx` responses are returned without retry. Future write endpoints may override or narrow retry behavior if an operation is not safe to repeat.
+
+## ADR-013: Migrate Playlist Editing From Apple Music to Spotify
+
+Status: Accepted
+
+Apple Music playlist editing will be replaced with Spotify playlist editing because the project cannot rely on Apple Music developer permissions. The product goal remains instrumental playlist conversion, but the upstream provider is now Spotify Web API.
+
+## ADR-014: Accept Spotify Access Tokens Per Request
+
+Status: Accepted
+
+Spotify playlist and search endpoints will receive a user-authorized Spotify access token through `Authorization: Bearer <spotify_access_token>`. The server will not persist user access tokens in v1.
+
+## ADR-015: Keep Spotify API Access Behind an Internal Client
+
+Status: Accepted
+
+Spotify Web API calls will go through `internal/spotify`. The package owns bearer token application, JSON decoding, Spotify `items`/`next` pagination traversal, retry behavior, and Spotify API error parsing. REST handlers should depend on this client boundary instead of constructing raw Spotify HTTP requests directly.
+
+The Spotify client retries `429`, `500`, `502`, `503`, and `504` responses with a small exponential backoff and honors `Retry-After` when Spotify provides it. Permanent `4xx` responses are returned without retry.
+
+## ADR-016: Keep Spotify Client Secret in `.env`
+
+Status: Accepted
+
+Spotify app credentials will be read from `.env` or process environment variables. `SPOTIFY_CLIENT_SECRET` must never be returned by API responses or logs. Public configuration may expose only whether the secret is configured.

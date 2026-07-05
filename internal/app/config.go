@@ -9,20 +9,26 @@ import (
 
 const (
 	envHTTPAddr            = "HTTP_ADDR"
-	envAppleDeveloperToken = "APPLE_DEVELOPER_TOKEN"
-	envAppleStorefront     = "APPLE_STOREFRONT"
+	envSpotifyClientID     = "SPOTIFY_CLIENT_ID"
+	envSpotifyClientSecret = "SPOTIFY_CLIENT_SECRET"
+	envSpotifyRedirectURI  = "SPOTIFY_REDIRECT_URI"
+	envSpotifyBaseURL      = "SPOTIFY_BASE_URL"
 )
 
 type Config struct {
 	HTTPAddr            string
-	AppleDeveloperToken string
-	AppleStorefront     string
+	SpotifyClientID     string
+	SpotifyClientSecret string
+	SpotifyRedirectURI  string
+	SpotifyBaseURL      string
 }
 
 type PublicConfig struct {
 	HTTPAddr                      string `json:"http_addr"`
-	AppleDeveloperTokenConfigured bool   `json:"apple_developer_token_configured"`
-	AppleStorefront               string `json:"apple_storefront"`
+	SpotifyClientIDConfigured     bool   `json:"spotify_client_id_configured"`
+	SpotifyClientSecretConfigured bool   `json:"spotify_client_secret_configured"`
+	SpotifyRedirectURI            string `json:"spotify_redirect_uri"`
+	SpotifyBaseURL                string `json:"spotify_base_url"`
 }
 
 type configOptions struct {
@@ -33,8 +39,8 @@ type configOptions struct {
 // LoadConfig builds the runtime configuration from defaults, .env values, and process environment overrides.
 func LoadConfig(opts configOptions) (Config, error) {
 	cfg := Config{
-		HTTPAddr:        ":8080",
-		AppleStorefront: "jp",
+		HTTPAddr:       ":8080",
+		SpotifyBaseURL: "https://api.spotify.com",
 	}
 
 	env, err := loadDotenv(opts.DotenvPath)
@@ -54,8 +60,10 @@ func LoadConfig(opts configOptions) (Config, error) {
 func (cfg Config) Public() PublicConfig {
 	return PublicConfig{
 		HTTPAddr:                      cfg.HTTPAddr,
-		AppleDeveloperTokenConfigured: strings.TrimSpace(cfg.AppleDeveloperToken) != "",
-		AppleStorefront:               cfg.AppleStorefront,
+		SpotifyClientIDConfigured:     strings.TrimSpace(cfg.SpotifyClientID) != "",
+		SpotifyClientSecretConfigured: strings.TrimSpace(cfg.SpotifyClientSecret) != "",
+		SpotifyRedirectURI:            cfg.SpotifyRedirectURI,
+		SpotifyBaseURL:                cfg.SpotifyBaseURL,
 	}
 }
 
@@ -116,11 +124,17 @@ func applyEnv(cfg *Config, env map[string]string) error {
 	if value := strings.TrimSpace(env[envHTTPAddr]); value != "" {
 		cfg.HTTPAddr = value
 	}
-	if value := strings.TrimSpace(env[envAppleDeveloperToken]); value != "" {
-		cfg.AppleDeveloperToken = value
+	if value := strings.TrimSpace(env[envSpotifyClientID]); value != "" {
+		cfg.SpotifyClientID = value
 	}
-	if value := strings.TrimSpace(env[envAppleStorefront]); value != "" {
-		cfg.AppleStorefront = value
+	if value := strings.TrimSpace(env[envSpotifyClientSecret]); value != "" {
+		cfg.SpotifyClientSecret = value
+	}
+	if value := strings.TrimSpace(env[envSpotifyRedirectURI]); value != "" {
+		cfg.SpotifyRedirectURI = value
+	}
+	if value := strings.TrimSpace(env[envSpotifyBaseURL]); value != "" {
+		cfg.SpotifyBaseURL = value
 	}
 
 	return nil
