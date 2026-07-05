@@ -1,0 +1,33 @@
+# Go
+/bin/
+/dist/
+/build/
+*.exe
+*.test
+*.out
+coverage.out
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config.local.*
+*.p8
+*.pem
+*.key
+*.token
+tokens/
+secrets/
+
+# Runtime output
+reports/
+*.log
+.cache/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
