@@ -31,22 +31,53 @@ func TestPlaylistsEndpointReturnsPaginatedSpotifyItems(t *testing.T) {
 		assertBearer(t, r)
 		switch r.URL.String() {
 		case "/v1/me/playlists":
-			_, _ = w.Write([]byte(`{"items":[{"id":"one"}],"next":"` + serverURL(r) + `/v1/me/playlists?offset=1"}`))
+			_, _ = w.Write([]byte(`{"items":[{"id":"spotify-id-one","name":"  Focus\tMix\n","external_urls":{"spotify":"https://open.spotify.com/playlist/one"},"owner":{"id":"owner-1"}}],"next":"` + serverURL(r) + `/v1/me/playlists?offset=1"}`))
 		case "/v1/me/playlists?offset=1":
-			_, _ = w.Write([]byte(`{"items":[{"id":"two"}],"next":null}`))
+			_, _ = w.Write([]byte(`{"items":[{"id":"spotify-id-two","name":"Chill Beats","owner":{"id":"owner-2"}}],"next":null}`))
 		default:
 			t.Fatalf("unexpected spotify path: %s", r.URL.String())
 		}
 	}))
 	defer server.Close()
 
-	rec := performSpotifyRequest(t, server.URL, http.MethodGet, "/v1/playlists", "")
+	playlistLists := newPlaylistStore()
+	router := NewEngine()
+	bindSpotifyHandlers(router, Config{SpotifyBaseURL: server.URL}, newTokenStore(), newTrackSearchStore(), playlistLists)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/playlists", nil)
+	req.Header.Set("Authorization", "Bearer "+handlerTestToken)
+	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"id":"one"`) || !strings.Contains(rec.Body.String(), `"id":"two"`) {
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain; charset=utf-8") {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	want := "1\tFocus Mix\thttps://open.spotify.com/playlist/one\n2\tChill Beats\t\n"
+	if rec.Body.String() != want {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+	for _, leaked := range []string{"spotify-id-one", "spotify-id-two", "owner-1", "owner-2"} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("response leaked raw Spotify field %q: %s", leaked, rec.Body.String())
+		}
+	}
+
+	first, ok := playlistLists.ByNumber(handlerTestToken, 1)
+	if !ok {
+		t.Fatal("playlist number 1 was not saved")
+	}
+	if first.ID != "spotify-id-one" || first.Name != "Focus Mix" || first.URL != "https://open.spotify.com/playlist/one" {
+		t.Fatalf("playlist number 1 = %+v", first)
+	}
+	second, ok := playlistLists.ByNumber(handlerTestToken, 2)
+	if !ok {
+		t.Fatal("playlist number 2 was not saved")
+	}
+	if second.ID != "spotify-id-two" || second.Name != "Chill Beats" || second.URL != "" {
+		t.Fatalf("playlist number 2 = %+v", second)
 	}
 }
 
@@ -56,7 +87,7 @@ func TestPlaylistsEndpointUsesStoredUserAccessTokenWhenAuthorizationHeaderIsMiss
 		if got := r.Header.Get("Authorization"); got != "Bearer "+storedToken {
 			t.Fatalf("Authorization = %q", got)
 		}
-		_, _ = w.Write([]byte(`{"items":[{"id":"from-stored-token"}],"next":null}`))
+		_, _ = w.Write([]byte(`{"items":[{"name":"Stored Playlist","external_urls":{"spotify":"https://open.spotify.com/playlist/stored"}}],"next":null}`))
 	}))
 	defer server.Close()
 
@@ -76,7 +107,7 @@ func TestPlaylistsEndpointUsesStoredUserAccessTokenWhenAuthorizationHeaderIsMiss
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"id":"from-stored-token"`) {
+	if rec.Body.String() != "1\tStored Playlist\thttps://open.spotify.com/playlist/stored\n" {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), storedToken) {
@@ -120,7 +151,7 @@ func TestPlaylistsEndpointRejectsExpiredStoredUserAccessToken(t *testing.T) {
 		t.Fatalf("Save returned error: %v", err)
 	}
 	router := NewEngine()
-	bindSpotifyHandlers(router, Config{SpotifyBaseURL: "http://spotify.test"}, tokens)
+	bindSpotifyHandlers(router, Config{SpotifyBaseURL: "http://spotify.test"}, tokens, newTrackSearchStore(), newPlaylistStore())
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/playlists", nil)
@@ -220,6 +251,75 @@ func TestSearchTracksRequiresTerm(t *testing.T) {
 	assertErrorCode(t, rec.Body.String(), "invalid_request")
 }
 
+func TestSearchTracksQueriesInstrumentalAndKaraokeCandidates(t *testing.T) {
+	seen := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertBearer(t, r)
+		if r.URL.Path != "/v1/search" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("type") != "track" || r.URL.Query().Get("limit") != "10" || r.URL.Query().Get("market") != "JP" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+
+		q := r.URL.Query().Get("q")
+		seen[q] = true
+		switch q {
+		case "Original Song instrumental":
+			_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"Original Song - Instrumental","uri":"spotify:track:one","artists":[{"name":"Artist One"}],"album":{"name":"raw album"}}],"next":null}}`))
+		case "Original Song カラオケ":
+			_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"Original Song - Karaoke","uri":"spotify:track:two","artists":[{"name":"Artist Two"},{"name":"Artist Three"}],"id":"raw-id"}],"next":null}}`))
+		default:
+			t.Fatalf("unexpected q = %q", q)
+		}
+	}))
+	defer server.Close()
+
+	searches := newTrackSearchStore()
+	router := NewEngine()
+	bindSpotifyHandlers(router, Config{SpotifyBaseURL: server.URL}, newTokenStoreWithLatest(handlerTestToken), searches, newPlaylistStore())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/search/tracks?term=Original%20Song", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !seen["Original Song instrumental"] || !seen["Original Song カラオケ"] {
+		t.Fatalf("missing expected search queries: %+v", seen)
+	}
+
+	var got struct {
+		Items []trackSearchItem `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, rec.Body.String())
+	}
+	if len(got.Items) != 2 {
+		t.Fatalf("items len = %d body=%s", len(got.Items), rec.Body.String())
+	}
+	if got.Items[0].Name != "Original Song - Instrumental" || got.Items[0].URI != "spotify:track:one" || strings.Join(got.Items[0].Artists, ",") != "Artist One" {
+		t.Fatalf("first item = %+v", got.Items[0])
+	}
+	if got.Items[1].Name != "Original Song - Karaoke" || got.Items[1].URI != "spotify:track:two" || strings.Join(got.Items[1].Artists, ",") != "Artist Two,Artist Three" {
+		t.Fatalf("second item = %+v", got.Items[1])
+	}
+	for _, leaked := range []string{"raw album", "raw-id"} {
+		if strings.Contains(rec.Body.String(), leaked) {
+			t.Fatalf("response leaked raw Spotify field %q: %s", leaked, rec.Body.String())
+		}
+	}
+
+	saved, ok := searches.Latest()
+	if !ok {
+		t.Fatal("latest search was not saved")
+	}
+	if saved.Term != "Original Song" || len(saved.Items) != 2 {
+		t.Fatalf("saved search = %+v", saved)
+	}
+}
+
 func TestSearchTracksMapsSpotifyErrorsWithoutLeakingAccessToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assertBearer(t, r)
@@ -257,7 +357,7 @@ func TestNoLoginSearchPlaylistsUsesServerAppOnlyToken(t *testing.T) {
 		if r.URL.String() != "/v1/search?type=playlist&limit=10&market=JP&q=focus" {
 			t.Fatalf("URL = %s", r.URL.String())
 		}
-		_, _ = w.Write([]byte(`{"playlists":{"items":[{"id":"playlist-1"}],"next":null}}`))
+		_, _ = w.Write([]byte(`{"playlists":{"items":[{"id":"playlist-1","name":"Public Focus","external_urls":{"spotify":"https://open.spotify.com/playlist/public"},"tracks":{"total":12}}],"next":null}}`))
 	}))
 	defer spotifyAPI.Close()
 
@@ -274,8 +374,16 @@ func TestNoLoginSearchPlaylistsUsesServerAppOnlyToken(t *testing.T) {
 	if searchRec.Code != http.StatusOK {
 		t.Fatalf("search status = %d body = %s", searchRec.Code, searchRec.Body.String())
 	}
-	if !strings.Contains(searchRec.Body.String(), `"id":"playlist-1"`) {
+	if got := searchRec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain; charset=utf-8") {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if searchRec.Body.String() != "1\tPublic Focus\thttps://open.spotify.com/playlist/public\n" {
 		t.Fatalf("unexpected search body: %s", searchRec.Body.String())
+	}
+	for _, leaked := range []string{"playlist-1", "tracks"} {
+		if strings.Contains(searchRec.Body.String(), leaked) {
+			t.Fatalf("response leaked raw Spotify field %q: %s", leaked, searchRec.Body.String())
+		}
 	}
 }
 
@@ -359,4 +467,15 @@ func assertErrorCode(t *testing.T, body, want string) {
 
 func serverURL(r *http.Request) string {
 	return "http://" + r.Host
+}
+
+func newTokenStoreWithLatest(accessToken string) *tokenStore {
+	tokens := newTokenStore()
+	if _, err := tokens.Save(storedToken{
+		AccessToken: accessToken,
+		ExpiresAt:   time.Now().UTC().Add(time.Hour),
+	}); err != nil {
+		panic(err)
+	}
+	return tokens
 }

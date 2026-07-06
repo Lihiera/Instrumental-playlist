@@ -47,6 +47,9 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - Added `GET /oauth/spotify/callback` for OAuth state validation, authorization-code token exchange, and in-memory token metadata storage.
 - Added process-memory OAuth state storage with one-time state consumption.
 - Added mocked tests for login redirect contents, callback validation, token exchange form data, token metadata redaction, state replay rejection, missing callback code, and Spotify auth error redaction.
+- Simplified playlist list responses for `GET /v1/playlists` and `GET /v1/noLogin/search/playlists?keyword=...` to `text/plain`, one playlist per line, with only number, playlist name, and Spotify URL.
+- Added the first instrumental candidate search algorithm for `GET /v1/search/tracks?term=...`: it searches Spotify with `<term> instrumental` and `<term> カラオケ`, keeps `type=track`, `limit=10`, and `market=JP` fixed, and saves only track name, artist names, and URI in process memory.
+- Added per-user process-memory playlist list storage for `GET /v1/playlists`, replacing that user's saved list on each request so later conversion APIs can resolve the displayed playlist number to the hidden Spotify playlist id.
 
 ## Phase 2 Spotify Migration Completed
 
@@ -80,11 +83,24 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - Playlist and user search endpoints now use the stored in-memory user access token automatically after login, while still allowing an explicit `Authorization: Bearer ...` header to override it.
 - Playlist track listing now calls Spotify's current `GET /v1/playlists/{playlist_id}/items` upstream endpoint while keeping the app route as `GET /v1/playlists/{playlistID}/tracks`.
 
+## Playlist Response Simplification Added
+
+- `GET /v1/playlists` still follows Spotify pagination, but now returns only tab-separated number, name, and Spotify URL lines.
+- `GET /v1/noLogin/search/playlists?keyword=...` uses the same plain-text playlist summary format after app-only Spotify search.
+- Playlist names are normalized for line safety, and raw Spotify playlist ids, owner objects, track counts, and token values are not returned by these responses.
+- The hidden Spotify playlist ids are stored in process memory per authenticated user, keyed internally by a hash of the access token, so each user has one latest playlist list for future number-based conversion selection.
+
+## Instrumental Candidate Search Added
+
+- `GET /v1/search/tracks?term=...` now performs two Spotify Search calls for instrumental and karaoke candidates instead of returning a raw single search response.
+- Search candidate responses and in-memory storage contain only `name`, `artists`, and `uri`.
+- Filtering/scoring rules are still pending and will be layered on top of the saved candidate list.
+
 ## Next Actions
 
-- Start Phase 5 Redis token and state storage.
-- Replace process-memory OAuth state and token storage with Redis-backed storage.
-- Keep token values out of API responses and logs after the Redis migration.
+- Keep Phase 5 Redis token and state storage skipped temporarily.
+- Add Phase 6 instrumental candidate filtering and scoring rules.
+- Implement Phase 7 conversion dry-run and conversion REST APIs on top of the existing Spotify playlist and track endpoints.
 
 ## Open Questions
 
@@ -97,5 +113,5 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - `git status --short`: shows the Spotify migration changes.
 - `git branch --show-current`: `main`
 - `go env GOMOD`: `C:\Users\lgj46\Documents\Instrumental-playlist\go.mod`
-- `go test ./...`: passes with workspace-local `APPDATA` and `GOCACHE`.
+- `go test ./...`: passed after playlist plain-text response, playlist memory storage, and instrumental candidate search changes with workspace-local `APPDATA` and `GOCACHE`.
 - `go run ./cmd/instrumental-playlist`: starts the HTTP server.

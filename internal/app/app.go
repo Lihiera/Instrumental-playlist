@@ -93,6 +93,8 @@ func NewEngine() *gin.Engine {
 func BindHandlers(router *gin.Engine, cfg Config) {
 	tokens := newTokenStore()
 	oauthStates := newOAuthStateStore()
+	trackSearches := newTrackSearchStore()
+	playlistLists := newPlaylistStore()
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -100,7 +102,7 @@ func BindHandlers(router *gin.Engine, cfg Config) {
 		c.JSON(http.StatusOK, cfg.Public())
 	})
 	bindAuthHandlers(router, cfg, tokens, oauthStates)
-	bindSpotifyHandlers(router, cfg, tokens)
+	bindSpotifyHandlers(router, cfg, tokens, trackSearches, playlistLists)
 }
 
 // Handler builds a ready-to-serve Gin engine for tests and simple embedding.

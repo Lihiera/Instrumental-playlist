@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -46,26 +47,49 @@ type spotifyUser struct {
 }
 
 type spotifyTrackSearchResponse struct {
-	Tracks spotify.Page[json.RawMessage] `json:"tracks"`
+	Tracks spotify.Page[spotifyTrackSearchItem] `json:"tracks"`
+}
+
+type spotifyTrackSearchItem struct {
+	Name    string `json:"name"`
+	URI     string `json:"uri"`
+	Artists []struct {
+		Name string `json:"name"`
+	} `json:"artists"`
+}
+
+type trackSearchItem struct {
+	Name    string   `json:"name"`
+	Artists []string `json:"artists"`
+	URI     string   `json:"uri"`
 }
 
 type spotifyPlaylistSearchResponse struct {
-	Playlists spotify.Page[json.RawMessage] `json:"playlists"`
+	Playlists spotify.Page[spotifyPlaylistSummary] `json:"playlists"`
 }
 
-func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore) {
+type spotifyPlaylistSummary struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	ExternalURLs struct {
+		Spotify string `json:"spotify"`
+	} `json:"external_urls"`
+}
+
+func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, trackSearches *trackSearchStore, playlistLists *playlistStore) {
 	router.GET("/v1/playlists", func(c *gin.Context) {
 		client, opts, ok := spotifyRequest(c, cfg, tokens)
 		if !ok {
 			return
 		}
 
-		items, err := spotify.GetAllPages[json.RawMessage](c.Request.Context(), client, "/v1/me/playlists", opts)
+		items, err := spotify.GetAllPages[spotifyPlaylistSummary](c.Request.Context(), client, "/v1/me/playlists", opts)
 		if err != nil {
 			writeSpotifyError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"items": items})
+		playlistLists.SaveForAccessToken(opts.AccessToken, items)
+		writePlaylistLines(c, items)
 	})
 
 	router.POST("/v1/playlists", func(c *gin.Context) {
@@ -199,13 +223,13 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore) {
 			return
 		}
 
-		var search spotifyTrackSearchResponse
-		path := "/v1/search?type=track&q=" + url.QueryEscape(term)
-		if err := client.GetJSON(c.Request.Context(), path, opts, &search); err != nil {
+		items, err := searchInstrumentalTrackCandidates(c, client, opts, term)
+		if err != nil {
 			writeSpotifyError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"items": search.Tracks.Items})
+		trackSearches.Save(term, items)
+		c.JSON(http.StatusOK, gin.H{"items": items})
 	})
 
 	router.GET("/v1/noLogin/search/playlists", func(c *gin.Context) {
@@ -231,8 +255,39 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore) {
 			writeSpotifyError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"items": search.Playlists.Items})
+		writePlaylistLines(c, search.Playlists.Items)
 	})
+}
+
+func searchInstrumentalTrackCandidates(c *gin.Context, client *spotify.Client, opts spotify.RequestOptions, title string) ([]trackSearchItem, error) {
+	var items []trackSearchItem
+	for _, suffix := range []string{"instrumental", "カラオケ"} {
+		var search spotifyTrackSearchResponse
+		query := strings.TrimSpace(title) + " " + suffix
+		path := "/v1/search?type=track&limit=10&market=JP&q=" + url.QueryEscape(query)
+		if err := client.GetJSON(c.Request.Context(), path, opts, &search); err != nil {
+			return nil, err
+		}
+		for _, item := range search.Tracks.Items {
+			items = append(items, simplifyTrackSearchItem(item))
+		}
+	}
+	return items, nil
+}
+
+func simplifyTrackSearchItem(item spotifyTrackSearchItem) trackSearchItem {
+	artists := make([]string, 0, len(item.Artists))
+	for _, artist := range item.Artists {
+		name := strings.TrimSpace(artist.Name)
+		if name != "" {
+			artists = append(artists, name)
+		}
+	}
+	return trackSearchItem{
+		Name:    strings.TrimSpace(item.Name),
+		Artists: artists,
+		URI:     strings.TrimSpace(item.URI),
+	}
 }
 
 func spotifyRequest(c *gin.Context, cfg Config, tokens *tokenStore) (*spotify.Client, spotify.RequestOptions, bool) {
@@ -365,4 +420,17 @@ func writeRawJSON(c *gin.Context, status int, body json.RawMessage) {
 		return
 	}
 	c.Data(status, "application/json; charset=utf-8", body)
+}
+
+func writePlaylistLines(c *gin.Context, playlists []spotifyPlaylistSummary) {
+	var body strings.Builder
+	for i, playlist := range playlists {
+		fmt.Fprintf(&body, "%d\t%s\t%s\n", i+1, normalizePlainTextField(playlist.Name), strings.TrimSpace(playlist.ExternalURLs.Spotify))
+	}
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(body.String()))
+}
+
+func normalizePlainTextField(value string) string {
+	fields := strings.Fields(strings.TrimSpace(value))
+	return strings.Join(fields, " ")
 }

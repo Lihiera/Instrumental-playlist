@@ -171,13 +171,16 @@ The access token must include the scopes required by the operation. Playlist ope
 
 ### `GET /v1/playlists`
 
-Returns the current Spotify user's playlists. The server follows Spotify pagination and returns collected items.
+Returns the current Spotify user's playlists as plain text. The server follows Spotify pagination, then returns one playlist per line with only number, name, and Spotify URL separated by tabs.
 
-```json
-{
-  "items": []
-}
+```text
+1	Instrumental Focus	https://open.spotify.com/playlist/example
+2	Study Beats	https://open.spotify.com/playlist/example-two
 ```
+
+The response number is the playlist selector for later instrumental conversion requests. Each `GET /v1/playlists` call replaces the latest in-memory playlist list for that authenticated user only. The saved list keeps the Spotify playlist id internally, but playlist ids are not returned in this response.
+
+An empty playlist result returns `200 text/plain` with an empty body.
 
 ### `POST /v1/playlists`
 
@@ -239,11 +242,22 @@ Request:
 
 ### `GET /v1/search/tracks?term=...`
 
-Searches Spotify tracks.
+Searches Spotify track candidates for instrumental versions of an original title. The server calls Spotify Search twice with fixed parameters `type=track`, `limit=10`, and `market=JP`:
+
+- `q=<term> instrumental`
+- `q=<term> カラオケ`
+
+The latest candidate list is saved in process memory. Each returned item includes only track name, artist names, and Spotify URI.
 
 ```json
 {
-  "items": []
+  "items": [
+    {
+      "name": "Original Song - Instrumental",
+      "artists": ["Example Artist"],
+      "uri": "spotify:track:example"
+    }
+  ]
 }
 ```
 
@@ -251,12 +265,10 @@ Searches Spotify tracks.
 
 ### `GET /v1/noLogin/search/playlists?keyword=...`
 
-Searches public Spotify playlists without a user login. The server obtains an app-only Spotify token with Client Credentials, then calls Spotify Search with fixed query parameters `type=playlist`, `limit=10`, and `market=JP`.
+Searches public Spotify playlists without a user login. The server obtains an app-only Spotify token with Client Credentials, then calls Spotify Search with fixed query parameters `type=playlist`, `limit=10`, and `market=JP`. The response is plain text with one playlist per line and only number, name, and Spotify URL separated by tabs.
 
-```json
-{
-  "items": []
-}
+```text
+1	Focus Playlist	https://open.spotify.com/playlist/example
 ```
 
 `keyword` is required.
