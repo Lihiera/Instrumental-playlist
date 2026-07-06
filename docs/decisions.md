@@ -118,6 +118,6 @@ Phase 4 will add server-side Spotify Authorization Code Flow endpoints. `GET /oa
 
 ## ADR-020: Use Redis for OAuth State and Token Storage
 
-Status: Accepted
+Status: Accepted, deferred until after core feature completion
 
-Phase 5 will replace process-memory OAuth state and token storage with Redis-backed storage. Redis will hold OAuth state, token metadata, refresh tokens, and expiration data. Token values must remain absent from API responses and logs.
+Redis will eventually replace process-memory OAuth state and token storage after the core instrumental detection and conversion API feature set is complete. Redis will hold OAuth state, token metadata, refresh tokens, and expiration data. Token values must remain absent from API responses and logs.

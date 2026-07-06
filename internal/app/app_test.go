@@ -176,7 +176,7 @@ func TestBindHandlersRegistersEndpoints(t *testing.T) {
 	}
 
 	BindHandlers(router, Config{})
-	if got := len(router.Routes()); got != 15 {
+	if got := len(router.Routes()); got != 16 {
 		t.Fatalf("routes after binding = %d", got)
 	}
 

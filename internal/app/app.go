@@ -144,5 +144,6 @@ Endpoints:
   DELETE /v1/playlists/{playlistID}/tracks
   GET /v1/search/tracks?term=...
   GET /v1/noLogin/search/playlists?keyword=...
+  POST /v1/conversions
 `, Name, Name, Name)
 }

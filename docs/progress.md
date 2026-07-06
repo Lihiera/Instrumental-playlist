@@ -62,7 +62,7 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - Playlist and search handlers extract Spotify user access tokens from `Authorization: Bearer <spotify_access_token>`.
 - Playlist and user search handlers use the latest in-memory OAuth user access token when `Authorization` is omitted.
 - Playlist list and playlist track list endpoints follow Spotify pagination and return collected `items`.
-- Playlist creation fetches the current Spotify user through `/v1/me` before creating the playlist under that user.
+- Playlist creation uses Spotify's `POST /v1/me/playlists` endpoint for the current authenticated user.
 - Track add and delete endpoints require explicit Spotify URIs in the request body and reject batches over 100 URIs.
 - Spotify upstream errors are mapped to stable JSON responses without returning access tokens.
 
@@ -82,6 +82,7 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - `POST /v1/auth/logout` clears in-memory Spotify user tokens and is safe to call when already logged out.
 - Playlist and user search endpoints now use the stored in-memory user access token automatically after login, while still allowing an explicit `Authorization: Bearer ...` header to override it.
 - Playlist track listing now calls Spotify's current `GET /v1/playlists/{playlist_id}/items` upstream endpoint while keeping the app route as `GET /v1/playlists/{playlistID}/tracks`.
+- Playlist track addition now calls Spotify's current `POST /v1/playlists/{playlist_id}/items` upstream endpoint while keeping the app route as `POST /v1/playlists/{playlistID}/tracks`.
 
 ## Playlist Response Simplification Added
 
@@ -93,25 +94,33 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 ## Instrumental Candidate Search Added
 
 - `GET /v1/search/tracks?term=...` now performs two Spotify Search calls for instrumental and karaoke candidates instead of returning a raw single search response.
-- Search candidate responses and in-memory storage contain only `name`, `artists`, and `uri`.
-- Filtering/scoring rules are still pending and will be layered on top of the saved candidate list.
+- Search candidate responses and in-memory storage contain only safe track fields plus the Spotify URI needed internally for later playlist insertion.
+
+## Conversion Endpoint Added
+
+- Added internal instrumental target selection over the existing 20-candidate search set for each source track.
+- Karaoke fallback requires `カラオケ` or `karaoke` in the candidate title, so regular tracks returned by Spotify search are not selected only because they came from the karaoke query.
+- Source-title matching now compares text before the first `(` or `（`, while candidate titles are compared in full.
+- Added `POST /v1/conversions` with `playlist_number` input, per-user playlist-number lookup, and a `409 text/plain` playlist-selection response when the user has not loaded playlists into process memory yet.
+- Conversion creates a new private `<source playlist name> Instrumental` playlist only when at least one target is found, adds selected tracks in batches of at most 100 URIs, and returns safe JSON with created playlist title/URL, added count, and `not_found` title/URL items.
+- Added mocked tests for candidate selection, missing playlist memory, invalid playlist number, successful conversion, all-not-found conversion, add batching, and response redaction.
 
 ## Next Actions
 
-- Keep Phase 5 Redis token and state storage skipped temporarily.
-- Add Phase 6 instrumental candidate filtering and scoring rules.
-- Implement Phase 7 conversion dry-run and conversion REST APIs on top of the existing Spotify playlist and track endpoints.
+- Keep Redis token and state storage deferred until after the core feature set is complete.
+- Add `POST /v1/conversions/dry-run` on top of the conversion selection workflow.
+- Improve conversion partial-failure reporting for Spotify write failures.
 
 ## Open Questions
 
-- Redis deployment details for local development and production-like environments.
 - Whether CORS is needed for a future browser client.
 - Whether conversion reports should be returned only in API responses or also saved to local files later.
+- Redis deployment details for local development and production-like environments, after core feature development is complete.
 
 ## Verification Checklist
 
 - `git status --short`: shows the Spotify migration changes.
 - `git branch --show-current`: `main`
 - `go env GOMOD`: `C:\Users\lgj46\Documents\Instrumental-playlist\go.mod`
-- `go test ./...`: passed after playlist plain-text response, playlist memory storage, and instrumental candidate search changes with workspace-local `APPDATA` and `GOCACHE`.
+- `go test ./...`: passed after conversion endpoint, candidate selection, playlist creation, and add batching changes with workspace-local Go caches.
 - `go run ./cmd/instrumental-playlist`: starts the HTTP server.

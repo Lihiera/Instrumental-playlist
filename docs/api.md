@@ -12,10 +12,6 @@ Required or supported settings:
 - `SPOTIFY_REDIRECT_URI`: Redirect URI registered in the Spotify developer dashboard.
 - `SPOTIFY_BASE_URL`: Spotify Web API base URL. Default: `https://api.spotify.com`.
 - `SPOTIFY_ACCOUNTS_BASE_URL`: Spotify Accounts base URL. Default: `https://accounts.spotify.com`.
-- `REDIS_ADDR`: Redis address for Phase 5 token and OAuth state storage.
-- `REDIS_PASSWORD`: Optional Redis password.
-- `REDIS_DB`: Optional Redis database number.
-
 ## Endpoints
 
 ### `GET /health`
@@ -153,7 +149,7 @@ Successful response: `200 text/html` success page for browser login flows. The p
 - expiration time
 - whether a refresh token was saved
 
-Phase 5 will move callback state and token storage from process memory to Redis.
+Redis-backed callback state and token storage is deferred until after the core feature set is complete.
 
 ## Spotify Request Headers
 
@@ -184,7 +180,7 @@ An empty playlist result returns `200 text/plain` with an empty body.
 
 ### `POST /v1/playlists`
 
-Creates a playlist for the current Spotify user. The server fetches `/v1/me` from Spotify to find the user id before creating the playlist.
+Creates a playlist for the current Spotify user through Spotify's `POST /v1/me/playlists` endpoint.
 
 Request:
 
@@ -212,7 +208,7 @@ Spotify may return `403` when the authenticated user is neither the owner nor a 
 
 ### `POST /v1/playlists/{playlistID}/tracks`
 
-Adds tracks to a playlist. Spotify accepts at most 100 URIs per request, and the API rejects larger batches with `400`.
+Adds tracks to a playlist. The public API keeps the `/tracks` route name, but the server calls Spotify's current `POST /v1/playlists/{playlist_id}/items` endpoint upstream. Spotify accepts at most 100 URIs per request, and the API rejects larger batches with `400`.
 
 Request:
 
@@ -223,7 +219,7 @@ Request:
 }
 ```
 
-`uris` is required and must contain 1 to 100 non-empty Spotify URIs. `position` is optional. The response is the Spotify snapshot response and uses status `201`.
+`uris` is required and must contain 1 to 100 non-empty Spotify URIs. `position` is optional and is forwarded to Spotify. The response is the Spotify snapshot response and uses status `201`.
 
 ### `DELETE /v1/playlists/{playlistID}/tracks`
 
@@ -247,13 +243,14 @@ Searches Spotify track candidates for instrumental versions of an original title
 - `q=<term> instrumental`
 - `q=<term> カラオケ`
 
-The latest candidate list is saved in process memory. Each returned item includes only track name, artist names, and Spotify URI.
+The latest candidate list is saved in process memory. Each returned item includes only track name, Spotify URL when Spotify provides one, artist names, and Spotify URI.
 
 ```json
 {
   "items": [
     {
       "name": "Original Song - Instrumental",
+      "url": "https://open.spotify.com/track/example",
       "artists": ["Example Artist"],
       "uri": "spotify:track:example"
     }
@@ -272,6 +269,48 @@ Searches public Spotify playlists without a user login. The server obtains an ap
 ```
 
 `keyword` is required.
+
+### `POST /v1/conversions`
+
+Converts one source playlist into a new private instrumental playlist. `playlist_number` is the number returned by the latest `GET /v1/playlists` response for the same authenticated user.
+
+Request:
+
+```json
+{
+  "playlist_number": 1
+}
+```
+
+If the server does not have a playlist list saved in process memory for the user, it fetches the user's Spotify playlists, saves them, and returns `409 text/plain` with only number, playlist title, and Spotify URL. No conversion is run for this response.
+
+```text
+1	Focus Playlist	https://open.spotify.com/playlist/example
+```
+
+For each source track, the server reuses the instrumental candidate search behavior and evaluates up to 20 candidates from `<title> instrumental` and `<title> カラオケ`. Source title comparisons use the text before the first `(` or `（` to avoid parenthetical subtitles blocking matches; candidate titles are compared in full. It first chooses a candidate whose title contains the source title, whose title contains `instrumental` or `インスト`, and whose artists include at least one source artist. If no such candidate exists, it falls back to the first candidate whose title contains the source title and contains `カラオケ` or `karaoke` in the candidate title.
+
+Successful response:
+
+```json
+{
+  "created_playlist": {
+    "title": "Focus Playlist Instrumental",
+    "url": "https://open.spotify.com/playlist/created"
+  },
+  "added_count": 3,
+  "not_found": [
+    {
+      "title": "Original Song",
+      "url": "https://open.spotify.com/track/original"
+    }
+  ]
+}
+```
+
+If no target tracks are found, `created_playlist` is `null`, `added_count` is `0`, and no empty playlist is created. `not_found` items contain only source track title and URL.
+
+If the selected source playlist has no tracks, or has no playable Spotify track items, the endpoint returns `400 invalid_request` instead of a successful empty conversion.
 
 ## Error Responses
 
@@ -306,11 +345,9 @@ Common error codes:
 - `token_not_found`: no in-memory token exists for the requested token id.
 - `spotify_oauth_state_invalid`: OAuth callback state is missing, expired, or invalid.
 - `spotify_oauth_code_missing`: OAuth callback code is missing.
-- `redis_unavailable`: Redis-backed token or OAuth state storage is unavailable.
 
 Spotify access tokens and Spotify Client Secret values are never returned by error responses.
 
 ## Planned Conversion Endpoints
 
 - `POST /v1/conversions/dry-run`
-- `POST /v1/conversions`

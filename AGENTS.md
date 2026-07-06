@@ -10,11 +10,11 @@ The current target is REST API behavior over HTTP, not CLI playlist operations. 
 
 - Runtime configuration is loaded from `.env` first, then process environment variables.
 - Process environment variables override `.env` values.
-- Planned Spotify settings are `HTTP_ADDR`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, `SPOTIFY_BASE_URL`, and Redis connection settings.
+- Current Spotify settings are `HTTP_ADDR`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, `SPOTIFY_BASE_URL`, and `SPOTIFY_ACCOUNTS_BASE_URL`. Redis connection settings will be added after core feature development.
 - Secret values must never be returned by API responses or logs.
 - Spotify playlist and search endpoints should accept a user access token through `Authorization: Bearer <spotify_access_token>`.
 - Phase 4 adds Spotify Authorization Code Flow login/callback endpoints.
-- Phase 5 moves OAuth state and token storage to Redis.
+- Redis-backed OAuth state and token storage is deferred until after core feature development.
 - The app currently exposes `GET /health` and `GET /v1/config`.
 - Gin is used for HTTP routing.
 - Tests use `httptest` and run Gin in test mode.

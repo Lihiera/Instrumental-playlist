@@ -55,21 +55,13 @@ Status: Complete
 - Store token metadata through the existing token storage boundary.
 - Add mocked tests for login redirect, callback validation, token exchange, and secret redaction.
 
-## Phase 5: Redis Token and State Storage
-
-- Replace process-memory token storage with Redis-backed storage.
-- Store OAuth state, access token metadata, refresh tokens, and expiration data in Redis.
-- Add `.env` settings for Redis connection details.
-- Keep token values out of API responses and logs.
-- Add Redis-backed tests using a fake or interface-backed store.
-
-## Phase 6: Instrumental Detection
+## Phase 5: Instrumental Detection
 
 - Implement default heuristic rules.
 - Add scoring and exclusion reasons.
 - Add tests for representative instrumental and non-instrumental metadata.
 
-## Phase 7: Conversion REST APIs
+## Phase 6: Conversion REST APIs
 
 - Add `POST /v1/conversions/dry-run`.
 - Add `POST /v1/conversions`.
@@ -77,9 +69,19 @@ Status: Complete
 - Create a new Spotify playlist and add accepted tracks for non-dry-run conversion.
 - Split Spotify track additions into batches of at most 100 URIs.
 
-## Phase 8: Hardening
+## Phase 7: Hardening
 
 - Add integration-style tests with mocked Spotify Web API.
 - Improve partial failure handling.
 - Document manual acceptance test steps and required Spotify scopes.
 - Add API examples for local development.
+
+## Deferred: Redis Token and State Storage
+
+Redis storage is intentionally deferred until after the core feature set is complete.
+
+- Replace process-memory token storage with Redis-backed storage.
+- Store OAuth state, access token metadata, refresh tokens, and expiration data in Redis.
+- Add `.env` settings for Redis connection details.
+- Keep token values out of API responses and logs.
+- Add Redis-backed tests using a fake or interface-backed store.

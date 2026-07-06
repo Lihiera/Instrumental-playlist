@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"instrumental-playlist/internal/instrumental"
 	"instrumental-playlist/internal/spotify"
 )
 
@@ -42,26 +44,63 @@ type removeTracksRequest struct {
 	SnapshotID string   `json:"snapshot_id,omitempty"`
 }
 
-type spotifyUser struct {
-	ID string `json:"id"`
+type conversionRequest struct {
+	PlaylistNumber int `json:"playlist_number"`
+}
+
+type conversionResponse struct {
+	CreatedPlaylist *conversionPlaylistResponse `json:"created_playlist"`
+	AddedCount      int                         `json:"added_count"`
+	NotFound        []instrumental.Track        `json:"not_found"`
+}
+
+type conversionPlaylistResponse struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
 }
 
 type spotifyTrackSearchResponse struct {
 	Tracks spotify.Page[spotifyTrackSearchItem] `json:"tracks"`
 }
 
+type spotifyArtist struct {
+	Name string `json:"name"`
+}
+
 type spotifyTrackSearchItem struct {
-	Name    string `json:"name"`
-	URI     string `json:"uri"`
-	Artists []struct {
-		Name string `json:"name"`
-	} `json:"artists"`
+	Name         string `json:"name"`
+	URI          string `json:"uri"`
+	ExternalURLs struct {
+		Spotify string `json:"spotify"`
+	} `json:"external_urls"`
+	Artists []spotifyArtist `json:"artists"`
 }
 
 type trackSearchItem struct {
 	Name    string   `json:"name"`
+	URL     string   `json:"url,omitempty"`
 	Artists []string `json:"artists"`
 	URI     string   `json:"uri"`
+}
+
+type spotifyPlaylistTrackItem struct {
+	Track        *spotifyPlaylistTrack `json:"track"`
+	Item         *spotifyPlaylistTrack `json:"item"`
+	Name         string                `json:"name"`
+	URI          string                `json:"uri"`
+	ExternalURLs struct {
+		Spotify string `json:"spotify"`
+	} `json:"external_urls"`
+	Artists []spotifyArtist `json:"artists"`
+}
+
+type spotifyPlaylistTrack struct {
+	Name         string `json:"name"`
+	URI          string `json:"uri"`
+	ExternalURLs struct {
+		Spotify string `json:"spotify"`
+	} `json:"external_urls"`
+	Artists []spotifyArtist `json:"artists"`
 }
 
 type spotifyPlaylistSearchResponse struct {
@@ -108,16 +147,6 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 			return
 		}
 
-		var me spotifyUser
-		if err := client.GetJSON(c.Request.Context(), "/v1/me", opts, &me); err != nil {
-			writeSpotifyError(c, err)
-			return
-		}
-		if strings.TrimSpace(me.ID) == "" {
-			writeAPIError(c, http.StatusBadGateway, "spotify_request_failed", "spotify user response did not include an id", 0)
-			return
-		}
-
 		body := gin.H{"name": req.Name}
 		if req.Description != "" {
 			body["description"] = req.Description
@@ -127,7 +156,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 		}
 
 		var playlist json.RawMessage
-		if err := client.PostJSON(c.Request.Context(), "/v1/users/"+url.PathEscape(me.ID)+"/playlists", opts, body, &playlist); err != nil {
+		if err := client.PostJSON(c.Request.Context(), "/v1/me/playlists", opts, body, &playlist); err != nil {
 			writeSpotifyError(c, err)
 			return
 		}
@@ -170,7 +199,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 		}
 
 		var result json.RawMessage
-		path := "/v1/playlists/" + url.PathEscape(strings.TrimSpace(c.Param("playlistID"))) + "/tracks"
+		path := spotifyPlaylistItemsPath(strings.TrimSpace(c.Param("playlistID")))
 		if err := client.PostJSON(c.Request.Context(), path, opts, body, &result); err != nil {
 			writeSpotifyError(c, err)
 			return
@@ -223,7 +252,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 			return
 		}
 
-		items, err := searchInstrumentalTrackCandidates(c, client, opts, term)
+		items, err := searchInstrumentalTrackCandidates(c.Request.Context(), client, opts, term)
 		if err != nil {
 			writeSpotifyError(c, err)
 			return
@@ -257,15 +286,60 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 		}
 		writePlaylistLines(c, search.Playlists.Items)
 	})
+
+	router.POST("/v1/conversions", func(c *gin.Context) {
+		client, opts, ok := spotifyRequest(c, cfg, tokens)
+		if !ok {
+			return
+		}
+
+		var req conversionRequest
+		if !bindJSON(c, &req) {
+			return
+		}
+		if req.PlaylistNumber < 1 {
+			writeAPIError(c, http.StatusBadRequest, "invalid_request", "playlist_number must be greater than zero", 0)
+			return
+		}
+
+		source, ok := playlistLists.ByNumber(opts.AccessToken, req.PlaylistNumber)
+		if !ok {
+			if _, exists := playlistLists.ForAccessToken(opts.AccessToken); exists {
+				writeAPIError(c, http.StatusBadRequest, "invalid_request", "playlist_number was not found in the latest playlist list", 0)
+				return
+			}
+
+			items, err := spotify.GetAllPages[spotifyPlaylistSummary](c.Request.Context(), client, "/v1/me/playlists", opts)
+			if err != nil {
+				writeSpotifyError(c, err)
+				return
+			}
+			playlistLists.SaveForAccessToken(opts.AccessToken, items)
+			writePlaylistLinesStatus(c, http.StatusConflict, items)
+			return
+		}
+
+		result, err := convertPlaylist(c.Request.Context(), client, opts, source)
+		if err != nil {
+			var inputErr conversionInputError
+			if errors.As(err, &inputErr) {
+				writeAPIError(c, http.StatusBadRequest, "invalid_request", inputErr.Error(), 0)
+				return
+			}
+			writeSpotifyError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
 }
 
-func searchInstrumentalTrackCandidates(c *gin.Context, client *spotify.Client, opts spotify.RequestOptions, title string) ([]trackSearchItem, error) {
+func searchInstrumentalTrackCandidates(ctx context.Context, client *spotify.Client, opts spotify.RequestOptions, title string) ([]trackSearchItem, error) {
 	var items []trackSearchItem
 	for _, suffix := range []string{"instrumental", "カラオケ"} {
 		var search spotifyTrackSearchResponse
 		query := strings.TrimSpace(title) + " " + suffix
 		path := "/v1/search?type=track&limit=10&market=JP&q=" + url.QueryEscape(query)
-		if err := client.GetJSON(c.Request.Context(), path, opts, &search); err != nil {
+		if err := client.GetJSON(ctx, path, opts, &search); err != nil {
 			return nil, err
 		}
 		for _, item := range search.Tracks.Items {
@@ -285,9 +359,176 @@ func simplifyTrackSearchItem(item spotifyTrackSearchItem) trackSearchItem {
 	}
 	return trackSearchItem{
 		Name:    strings.TrimSpace(item.Name),
+		URL:     strings.TrimSpace(item.ExternalURLs.Spotify),
 		Artists: artists,
 		URI:     strings.TrimSpace(item.URI),
 	}
+}
+
+func convertPlaylist(ctx context.Context, client *spotify.Client, opts spotify.RequestOptions, source storedPlaylist) (conversionResponse, error) {
+	items, err := spotify.GetAllPages[spotifyPlaylistTrackItem](ctx, client, "/v1/playlists/"+url.PathEscape(source.ID)+"/items", opts)
+	if err != nil {
+		return conversionResponse{}, spotifyOperationError{Operation: "fetch source playlist tracks", Err: err}
+	}
+	if len(items) == 0 {
+		return conversionResponse{}, conversionInputError("source playlist has no tracks")
+	}
+
+	var selectedURIs []string
+	notFound := []instrumental.Track{}
+	usableTracks := 0
+	for _, item := range items {
+		original, ok := originalTrackFromPlaylistItem(item)
+		if !ok {
+			continue
+		}
+		usableTracks++
+		candidates, err := searchInstrumentalTrackCandidates(ctx, client, opts, original.Title)
+		if err != nil {
+			return conversionResponse{}, spotifyOperationError{Operation: "search instrumental candidates", Err: err}
+		}
+		selection := instrumental.SelectTarget(original, instrumentalCandidates(candidates))
+		if !selection.Found {
+			notFound = append(notFound, selection.NotFound)
+			continue
+		}
+		if uri := strings.TrimSpace(selection.Target.URI); uri != "" {
+			selectedURIs = append(selectedURIs, uri)
+		} else {
+			notFound = append(notFound, instrumental.Track{Title: original.Title, URL: original.URL})
+		}
+	}
+	if usableTracks == 0 {
+		return conversionResponse{}, conversionInputError("source playlist did not contain playable Spotify tracks")
+	}
+
+	if len(selectedURIs) == 0 {
+		return conversionResponse{AddedCount: 0, NotFound: notFound}, nil
+	}
+
+	created, err := createInstrumentalPlaylist(ctx, client, opts, source.Name)
+	if err != nil {
+		return conversionResponse{}, spotifyOperationError{Operation: "create destination playlist", Err: err}
+	}
+	if err := addSpotifyTrackURIs(ctx, client, opts, created.ID, selectedURIs); err != nil {
+		return conversionResponse{}, spotifyOperationError{Operation: "add tracks to destination playlist", Err: err}
+	}
+
+	return conversionResponse{
+		CreatedPlaylist: &conversionPlaylistResponse{
+			Title: normalizePlainTextField(created.Name),
+			URL:   strings.TrimSpace(created.ExternalURLs.Spotify),
+		},
+		AddedCount: len(selectedURIs),
+		NotFound:   notFound,
+	}, nil
+}
+
+type conversionInputError string
+
+func (e conversionInputError) Error() string {
+	return string(e)
+}
+
+type spotifyOperationError struct {
+	Operation string
+	Err       error
+}
+
+func (e spotifyOperationError) Error() string {
+	if strings.TrimSpace(e.Operation) == "" {
+		return e.Err.Error()
+	}
+	return e.Operation + " failed: " + e.Err.Error()
+}
+
+func (e spotifyOperationError) Unwrap() error {
+	return e.Err
+}
+
+func originalTrackFromPlaylistItem(item spotifyPlaylistTrackItem) (instrumental.Track, bool) {
+	if item.Track != nil {
+		return originalTrackFromSpotifyTrack(*item.Track)
+	}
+	if item.Item != nil {
+		return originalTrackFromSpotifyTrack(*item.Item)
+	}
+	track := instrumental.Track{
+		Title:   normalizePlainTextField(item.Name),
+		URL:     strings.TrimSpace(item.ExternalURLs.Spotify),
+		Artists: spotifyArtistNames(item.Artists),
+	}
+	return track, track.Title != ""
+}
+
+func originalTrackFromSpotifyTrack(track spotifyPlaylistTrack) (instrumental.Track, bool) {
+	original := instrumental.Track{
+		Title:   normalizePlainTextField(track.Name),
+		URL:     strings.TrimSpace(track.ExternalURLs.Spotify),
+		Artists: spotifyArtistNames(track.Artists),
+	}
+	return original, original.Title != ""
+}
+
+func instrumentalCandidates(items []trackSearchItem) []instrumental.Candidate {
+	candidates := make([]instrumental.Candidate, 0, len(items))
+	for _, item := range items {
+		candidates = append(candidates, instrumental.Candidate{
+			Track: instrumental.Track{
+				Title:   normalizePlainTextField(item.Name),
+				URL:     strings.TrimSpace(item.URL),
+				Artists: append([]string(nil), item.Artists...),
+			},
+			URI: strings.TrimSpace(item.URI),
+		})
+	}
+	return candidates
+}
+
+func createInstrumentalPlaylist(ctx context.Context, client *spotify.Client, opts spotify.RequestOptions, sourceName string) (spotifyPlaylistSummary, error) {
+	name := strings.TrimSpace(sourceName)
+	if name == "" {
+		name = "Instrumental Playlist"
+	}
+	body := gin.H{"name": name + " Instrumental", "public": false}
+
+	var playlist spotifyPlaylistSummary
+	if err := client.PostJSON(ctx, "/v1/me/playlists", opts, body, &playlist); err != nil {
+		return spotifyPlaylistSummary{}, err
+	}
+	if strings.TrimSpace(playlist.ID) == "" {
+		return spotifyPlaylistSummary{}, fmt.Errorf("spotify playlist response did not include an id")
+	}
+	return playlist, nil
+}
+
+func addSpotifyTrackURIs(ctx context.Context, client *spotify.Client, opts spotify.RequestOptions, playlistID string, uris []string) error {
+	path := spotifyPlaylistItemsPath(playlistID)
+	for start := 0; start < len(uris); start += maxSpotifyPlaylistURIs {
+		end := start + maxSpotifyPlaylistURIs
+		if end > len(uris) {
+			end = len(uris)
+		}
+		if err := client.PostJSON(ctx, path, opts, gin.H{"uris": uris[start:end]}, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func spotifyPlaylistItemsPath(playlistID string) string {
+	return "/v1/playlists/" + url.PathEscape(strings.TrimSpace(playlistID)) + "/items"
+}
+
+func spotifyArtistNames(artists []spotifyArtist) []string {
+	names := make([]string, 0, len(artists))
+	for _, artist := range artists {
+		name := strings.TrimSpace(artist.Name)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func spotifyRequest(c *gin.Context, cfg Config, tokens *tokenStore) (*spotify.Client, spotify.RequestOptions, bool) {
@@ -387,6 +628,7 @@ func writeSpotifyError(c *gin.Context, err error) {
 		return
 	}
 
+	var operationErr spotifyOperationError
 	var apiErr *spotify.APIError
 	if errors.As(err, &apiErr) {
 		status := apiErr.StatusCode
@@ -396,6 +638,9 @@ func writeSpotifyError(c *gin.Context, err error) {
 		message := apiErr.SpotifyError.Message
 		if strings.TrimSpace(message) == "" {
 			message = "spotify api request failed"
+		}
+		if errors.As(err, &operationErr) && strings.TrimSpace(operationErr.Operation) != "" {
+			message = operationErr.Operation + " failed: " + message
 		}
 		writeAPIError(c, status, "spotify_api_error", message, apiErr.StatusCode)
 		return
@@ -423,11 +668,15 @@ func writeRawJSON(c *gin.Context, status int, body json.RawMessage) {
 }
 
 func writePlaylistLines(c *gin.Context, playlists []spotifyPlaylistSummary) {
+	writePlaylistLinesStatus(c, http.StatusOK, playlists)
+}
+
+func writePlaylistLinesStatus(c *gin.Context, status int, playlists []spotifyPlaylistSummary) {
 	var body strings.Builder
 	for i, playlist := range playlists {
 		fmt.Fprintf(&body, "%d\t%s\t%s\n", i+1, normalizePlainTextField(playlist.Name), strings.TrimSpace(playlist.ExternalURLs.Spotify))
 	}
-	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(body.String()))
+	c.Data(status, "text/plain; charset=utf-8", []byte(body.String()))
 }
 
 func normalizePlainTextField(value string) string {
