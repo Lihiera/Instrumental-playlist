@@ -260,6 +260,20 @@ The latest candidate list is saved in process memory. Each returned item include
 
 `term` is required.
 
+### `DELETE /v1/search/tracks/cache`
+
+Clears the latest track candidate search saved in process memory. The endpoint is idempotent and does not call Spotify.
+
+Response:
+
+```json
+{
+  "cleared": true
+}
+```
+
+`cleared` is `true` when a cached search existed and was removed, otherwise `false`.
+
 ### `GET /v1/noLogin/search/playlists?keyword=...`
 
 Searches public Spotify playlists without a user login. The server obtains an app-only Spotify token with Client Credentials, then calls Spotify Search with fixed query parameters `type=playlist`, `limit=10`, and `market=JP`. The response is plain text with one playlist per line and only number, name, and Spotify URL separated by tabs.
@@ -289,6 +303,8 @@ If the server does not have a playlist list saved in process memory for the user
 ```
 
 For each source track, the server reuses the instrumental candidate search behavior and evaluates up to 20 candidates from `<title> instrumental` and `<title> カラオケ`. Source title comparisons use the text before the first `(` or `（` to avoid parenthetical subtitles blocking matches; candidate titles are compared in full. It first chooses a candidate whose title contains the source title, whose title contains `instrumental` or `インスト`, and whose artists include at least one source artist. If no such candidate exists, it falls back to the first candidate whose title contains the source title and contains `カラオケ` or `karaoke` in the candidate title.
+
+Source tracks are read from Spotify playlist item objects returned by `GET /v1/playlists/{playlist_id}/items`. The converter uses the nested `item` track object from Spotify's current response shape, ignores large unused fields such as album metadata, and skips local or non-track items.
 
 Successful response:
 

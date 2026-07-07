@@ -108,11 +108,11 @@ func TestConversionsEndpointCreatesPrivateInstrumentalPlaylist(t *testing.T) {
 			_, _ = w.Write([]byte(`{"items":[{"track":{"name":"Original Song","uri":"spotify:track:original","external_urls":{"spotify":"https://open.spotify.com/track/original"},"artists":[{"name":"Artist One"}]}},{"track":{"name":"Missing Song","uri":"spotify:track:missing","external_urls":{"spotify":"https://open.spotify.com/track/missing"},"artists":[{"name":"Missing Artist"}]}}],"next":null}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/search":
 			switch r.URL.Query().Get("q") {
-			case "Original Song instrumental":
+			case "Artist Original Song instrumental":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"Original Song - Instrumental","uri":"spotify:track:selected-secret","external_urls":{"spotify":"https://open.spotify.com/track/selected"},"artists":[{"name":"Artist One"}]}],"next":null}}`))
-			case "Original Song カラオケ":
+			case "Artist Original Song カラオケ":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"Original Song カラオケ","uri":"spotify:track:karaoke-secret","external_urls":{"spotify":"https://open.spotify.com/track/karaoke"},"artists":[{"name":"Other Artist"}]}],"next":null}}`))
-			case "Missing Song instrumental", "Missing Song カラオケ":
+			case "Missing Missing Song instrumental", "Missing Missing Song カラオケ":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[],"next":null}}`))
 			default:
 				t.Fatalf("unexpected search q = %q", r.URL.Query().Get("q"))
@@ -185,9 +185,9 @@ func TestConversionsEndpointDoesNotUseKaraokeSearchFallbackWhenNameOmitsKaraoke(
 			_, _ = w.Write([]byte(`{"items":[{"item":{"name":"アンコール","external_urls":{"spotify":"https://open.spotify.com/track/original"},"artists":[{"name":"YOASOBI"}]}}],"next":null}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/search":
 			switch r.URL.Query().Get("q") {
-			case "アンコール instrumental":
+			case "YOASOBI アンコール instrumental":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[],"next":null}}`))
-			case "アンコール カラオケ":
+			case "YOASOBI アンコール カラオケ":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"アンコール","uri":"spotify:track:karaoke-selected","artists":[{"name":"Karaoke Artist"}]}],"next":null}}`))
 			default:
 				t.Fatalf("unexpected search q = %q", r.URL.Query().Get("q"))
@@ -229,6 +229,57 @@ func TestConversionsEndpointDoesNotUseKaraokeSearchFallbackWhenNameOmitsKaraoke(
 	}
 }
 
+func TestConversionsEndpointSearchesWithOriginalTitleBeforeParentheses(t *testing.T) {
+	var writeCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertBearer(t, r)
+		switch {
+		case r.Method == http.MethodGet && r.URL.String() == "/v1/playlists/source-playlist-id/items":
+			_, _ = w.Write([]byte(`{"items":[{"track":{"name":"再会 (produced by Ayase)","external_urls":{"spotify":"https://open.spotify.com/track/original"},"artists":[{"name":"LiSA"}]}}],"next":null}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/search":
+			switch r.URL.Query().Get("q") {
+			case "LiSA 再会 instrumental", "LiSA 再会 カラオケ":
+				_, _ = w.Write([]byte(`{"tracks":{"items":[],"next":null}}`))
+			default:
+				t.Fatalf("unexpected search q = %q", r.URL.Query().Get("q"))
+			}
+		case r.Method == http.MethodPost:
+			writeCalled = true
+			t.Fatalf("unexpected spotify write: %s", r.URL.String())
+		default:
+			t.Fatalf("unexpected spotify request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	playlistLists := newPlaylistStore()
+	playlistLists.SaveForAccessToken(handlerTestToken, []spotifyPlaylistSummary{
+		testSpotifyPlaylist("source-playlist-id", "Source Playlist", "https://open.spotify.com/playlist/source"),
+	})
+	router := NewEngine()
+	bindSpotifyHandlers(router, Config{SpotifyBaseURL: server.URL}, newTokenStore(), newTrackSearchStore(), playlistLists)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/conversions", strings.NewReader(`{"playlist_number":1}`))
+	req.Header.Set("Authorization", "Bearer "+handlerTestToken)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if writeCalled {
+		t.Fatal("conversion wrote playlist for not-found result")
+	}
+	var got conversionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, rec.Body.String())
+	}
+	if got.CreatedPlaylist != nil || got.AddedCount != 0 || len(got.NotFound) != 1 || got.NotFound[0].Title != "再会" {
+		t.Fatalf("response = %+v", got)
+	}
+}
+
 func TestConversionsEndpointReadsDirectTrackItems(t *testing.T) {
 	var addBody struct {
 		URIs []string `json:"uris"`
@@ -241,9 +292,9 @@ func TestConversionsEndpointReadsDirectTrackItems(t *testing.T) {
 			_, _ = w.Write([]byte(`{"items":[{"name":"Direct Song","external_urls":{"spotify":"https://open.spotify.com/track/direct"},"artists":[{"name":"Artist One"}]}],"next":null}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/search":
 			switch r.URL.Query().Get("q") {
-			case "Direct Song instrumental":
+			case "Artist Direct Song instrumental":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"Direct Song - Instrumental","uri":"spotify:track:direct-selected","artists":[{"name":"Artist One"}]}],"next":null}}`))
-			case "Direct Song カラオケ":
+			case "Artist Direct Song カラオケ":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[],"next":null}}`))
 			default:
 				t.Fatalf("unexpected search q = %q", r.URL.Query().Get("q"))
@@ -294,9 +345,9 @@ func TestConversionsEndpointReadsItemTrackPayloads(t *testing.T) {
 			_, _ = w.Write([]byte(`{"items":[{"added_at":"2026-07-05T18:11:51Z","item":{"type":"track","track":true,"name":"優しい彗星","uri":"spotify:track:original","external_urls":{"spotify":"https://open.spotify.com/track/original"},"artists":[{"name":"YOASOBI"}]}}],"next":null}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/search":
 			switch r.URL.Query().Get("q") {
-			case "優しい彗星 instrumental":
+			case "YOASOBI 優しい彗星 instrumental":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"優しい彗星 Instrumental","uri":"spotify:track:selected","artists":[{"name":"YOASOBI"}]}],"next":null}}`))
-			case "優しい彗星 カラオケ":
+			case "YOASOBI 優しい彗星 カラオケ":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[],"next":null}}`))
 			default:
 				t.Fatalf("unexpected search q = %q", r.URL.Query().Get("q"))
@@ -343,9 +394,9 @@ func TestConversionsEndpointReportsSpotifyOperationForForbiddenErrors(t *testing
 			_, _ = w.Write([]byte(`{"items":[{"item":{"name":"Original Song","external_urls":{"spotify":"https://open.spotify.com/track/original"},"artists":[{"name":"Artist One"}]}}],"next":null}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/search":
 			switch r.URL.Query().Get("q") {
-			case "Original Song instrumental":
+			case "Artist Original Song instrumental":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[{"name":"Original Song Instrumental","uri":"spotify:track:selected","artists":[{"name":"Artist One"}]}],"next":null}}`))
-			case "Original Song カラオケ":
+			case "Artist Original Song カラオケ":
 				_, _ = w.Write([]byte(`{"tracks":{"items":[],"next":null}}`))
 			default:
 				t.Fatalf("unexpected search q = %q", r.URL.Query().Get("q"))
@@ -468,7 +519,7 @@ func TestConversionsEndpointRejectsSourcePlaylistWithNoPlayableSpotifyTracks(t *
 		if r.Method != http.MethodGet || r.URL.String() != "/v1/playlists/source-playlist-id/items" {
 			t.Fatalf("unexpected spotify request: %s %s", r.Method, r.URL.String())
 		}
-		_, _ = w.Write([]byte(`{"items":[{"track":null},{"track":{"name":"   "}}],"next":null}`))
+		_, _ = w.Write([]byte(`{"items":[{"track":null},{"track":{"name":"   "}},{"is_local":true,"item":{"type":"track","name":"Local Track"}},{"item":{"type":"episode","name":"Podcast Episode"}}],"next":null}`))
 	}))
 	defer server.Close()
 

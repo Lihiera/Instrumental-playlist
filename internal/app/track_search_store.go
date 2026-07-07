@@ -46,3 +46,11 @@ func (s *trackSearchStore) Latest() (storedTrackSearch, bool) {
 	search.Items = append([]trackSearchItem(nil), s.latest.Items...)
 	return search, true
 }
+
+func (s *trackSearchStore) Clear() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hadSearch := !s.latest.CreatedAt.IsZero()
+	s.latest = storedTrackSearch{}
+	return hadSearch
+}

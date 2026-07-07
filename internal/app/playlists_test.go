@@ -287,7 +287,6 @@ func TestSearchTracksQueriesInstrumentalAndKaraokeCandidates(t *testing.T) {
 		if r.URL.Query().Get("type") != "track" || r.URL.Query().Get("limit") != "10" || r.URL.Query().Get("market") != "JP" {
 			t.Fatalf("query = %s", r.URL.RawQuery)
 		}
-
 		q := r.URL.Query().Get("q")
 		seen[q] = true
 		switch q {
@@ -343,6 +342,39 @@ func TestSearchTracksQueriesInstrumentalAndKaraokeCandidates(t *testing.T) {
 	}
 	if saved.Term != "Original Song" || len(saved.Items) != 2 {
 		t.Fatalf("saved search = %+v", saved)
+	}
+}
+
+func TestClearTrackSearchCache(t *testing.T) {
+	searches := newTrackSearchStore()
+	searches.Save("Original Song", []trackSearchItem{{Name: "Original Song - Instrumental", URI: "spotify:track:one"}})
+
+	router := NewEngine()
+	bindSpotifyHandlers(router, Config{SpotifyBaseURL: "http://spotify.test"}, newTokenStore(), searches, newPlaylistStore())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/v1/search/tracks/cache", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := searches.Latest(); ok {
+		t.Fatal("latest search was not cleared")
+	}
+	if !strings.Contains(rec.Body.String(), `"cleared":true`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/v1/search/tracks/cache", nil)
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"cleared":false`) {
+		t.Fatalf("unexpected second body: %s", rec.Body.String())
 	}
 }
 

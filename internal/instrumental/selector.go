@@ -50,7 +50,7 @@ func firstKaraokeMatch(original Track, candidates []Candidate) (Candidate, bool)
 }
 
 func titleContainsOriginal(originalTitle, candidateTitle string) bool {
-	original := normalizeOriginalTitle(originalTitle)
+	original := normalizeMatchText(NormalizeOriginalTitle(originalTitle))
 	candidate := normalizeMatchText(candidateTitle)
 	return original != "" && strings.Contains(candidate, original)
 }
@@ -88,8 +88,8 @@ func normalizeMatchText(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
-func normalizeOriginalTitle(value string) string {
-	return normalizeMatchText(trimTitleQualifier(value))
+func NormalizeOriginalTitle(value string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(trimTitleQualifier(value))), " ")
 }
 
 func trimTitleQualifier(value string) string {

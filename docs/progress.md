@@ -49,6 +49,7 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - Added mocked tests for login redirect contents, callback validation, token exchange form data, token metadata redaction, state replay rejection, missing callback code, and Spotify auth error redaction.
 - Simplified playlist list responses for `GET /v1/playlists` and `GET /v1/noLogin/search/playlists?keyword=...` to `text/plain`, one playlist per line, with only number, playlist name, and Spotify URL.
 - Added the first instrumental candidate search algorithm for `GET /v1/search/tracks?term=...`: it searches Spotify with `<term> instrumental` and `<term> カラオケ`, keeps `type=track`, `limit=10`, and `market=JP` fixed, and saves only track name, artist names, and URI in process memory.
+- Added `DELETE /v1/search/tracks/cache` for clearing the latest process-memory track candidate search.
 - Added per-user process-memory playlist list storage for `GET /v1/playlists`, replacing that user's saved list on each request so later conversion APIs can resolve the displayed playlist number to the hidden Spotify playlist id.
 
 ## Phase 2 Spotify Migration Completed
@@ -101,6 +102,7 @@ The project has completed Phase 4 of the Spotify migration and now has Spotify A
 - Added internal instrumental target selection over the existing 20-candidate search set for each source track.
 - Karaoke fallback requires `カラオケ` or `karaoke` in the candidate title, so regular tracks returned by Spotify search are not selected only because they came from the karaoke query.
 - Source-title matching now compares text before the first `(` or `（`, while candidate titles are compared in full.
+- Conversion reads Spotify's current playlist item wrapper shape, using the nested `item` track object and skipping local or non-track playlist entries.
 - Added `POST /v1/conversions` with `playlist_number` input, per-user playlist-number lookup, and a `409 text/plain` playlist-selection response when the user has not loaded playlists into process memory yet.
 - Conversion creates a new private `<source playlist name> Instrumental` playlist only when at least one target is found, adds selected tracks in batches of at most 100 URIs, and returns safe JSON with created playlist title/URL, added count, and `not_found` title/URL items.
 - Added mocked tests for candidate selection, missing playlist memory, invalid playlist number, successful conversion, all-not-found conversion, add batching, and response redaction.

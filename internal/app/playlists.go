@@ -60,16 +60,18 @@ type conversionPlaylistResponse struct {
 }
 
 type spotifyTrackSearchResponse struct {
-	Tracks spotify.Page[spotifyTrackSearchItem] `json:"tracks"`
+	Tracks spotify.Page[spotifyTrackObject] `json:"tracks"`
 }
 
 type spotifyArtist struct {
 	Name string `json:"name"`
 }
 
-type spotifyTrackSearchItem struct {
+type spotifyTrackObject struct {
 	Name         string `json:"name"`
 	URI          string `json:"uri"`
+	Type         string `json:"type"`
+	IsLocal      bool   `json:"is_local"`
 	ExternalURLs struct {
 		Spotify string `json:"spotify"`
 	} `json:"external_urls"`
@@ -84,19 +86,12 @@ type trackSearchItem struct {
 }
 
 type spotifyPlaylistTrackItem struct {
-	Track        *spotifyPlaylistTrack `json:"track"`
-	Item         *spotifyPlaylistTrack `json:"item"`
-	Name         string                `json:"name"`
-	URI          string                `json:"uri"`
-	ExternalURLs struct {
-		Spotify string `json:"spotify"`
-	} `json:"external_urls"`
-	Artists []spotifyArtist `json:"artists"`
-}
-
-type spotifyPlaylistTrack struct {
-	Name         string `json:"name"`
-	URI          string `json:"uri"`
+	Track        *spotifyTrackObject `json:"track"`
+	Item         *spotifyTrackObject `json:"item"`
+	IsLocal      bool                `json:"is_local"`
+	Type         string              `json:"type"`
+	Name         string              `json:"name"`
+	URI          string              `json:"uri"`
 	ExternalURLs struct {
 		Spotify string `json:"spotify"`
 	} `json:"external_urls"`
@@ -252,13 +247,17 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 			return
 		}
 
-		items, err := searchInstrumentalTrackCandidates(c.Request.Context(), client, opts, term)
+		items, err := searchInstrumentalTrackCandidates(c.Request.Context(), client, opts, term, nil)
 		if err != nil {
 			writeSpotifyError(c, err)
 			return
 		}
 		trackSearches.Save(term, items)
 		c.JSON(http.StatusOK, gin.H{"items": items})
+	})
+
+	router.DELETE("/v1/search/tracks/cache", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"cleared": trackSearches.Clear()})
 	})
 
 	router.GET("/v1/noLogin/search/playlists", func(c *gin.Context) {
@@ -302,6 +301,7 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 			return
 		}
 
+		// source includes the chosen playlist's ID, name, and URL
 		source, ok := playlistLists.ByNumber(opts.AccessToken, req.PlaylistNumber)
 		if !ok {
 			if _, exists := playlistLists.ForAccessToken(opts.AccessToken); exists {
@@ -333,12 +333,13 @@ func bindSpotifyHandlers(router *gin.Engine, cfg Config, tokens *tokenStore, tra
 	})
 }
 
-func searchInstrumentalTrackCandidates(ctx context.Context, client *spotify.Client, opts spotify.RequestOptions, title string) ([]trackSearchItem, error) {
+func searchInstrumentalTrackCandidates(ctx context.Context, client *spotify.Client, opts spotify.RequestOptions, title string, artists []string) ([]trackSearchItem, error) {
 	var items []trackSearchItem
 	for _, suffix := range []string{"instrumental", "カラオケ"} {
 		var search spotifyTrackSearchResponse
-		query := strings.TrimSpace(title) + " " + suffix
+		query := instrumentalSearchQuery(title, artists, suffix)
 		path := "/v1/search?type=track&limit=10&market=JP&q=" + url.QueryEscape(query)
+		fmt.Printf("Searching for %q (suffix=%q) -> %s\n", title, suffix, path)
 		if err := client.GetJSON(ctx, path, opts, &search); err != nil {
 			return nil, err
 		}
@@ -349,7 +350,30 @@ func searchInstrumentalTrackCandidates(ctx context.Context, client *spotify.Clie
 	return items, nil
 }
 
-func simplifyTrackSearchItem(item spotifyTrackSearchItem) trackSearchItem {
+func instrumentalSearchQuery(title string, artists []string, suffix string) string {
+	parts := []string{firstArtistSearchTerm(artists), strings.TrimSpace(title), strings.TrimSpace(suffix)}
+
+	queryParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			queryParts = append(queryParts, part)
+		}
+	}
+	return strings.Join(queryParts, " ")
+}
+
+func firstArtistSearchTerm(artists []string) string {
+	if len(artists) == 0 {
+		return ""
+	}
+	fields := strings.Fields(strings.TrimSpace(artists[0]))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func simplifyTrackSearchItem(item spotifyTrackObject) trackSearchItem {
 	artists := make([]string, 0, len(item.Artists))
 	for _, artist := range item.Artists {
 		name := strings.TrimSpace(artist.Name)
@@ -373,17 +397,18 @@ func convertPlaylist(ctx context.Context, client *spotify.Client, opts spotify.R
 	if len(items) == 0 {
 		return conversionResponse{}, conversionInputError("source playlist has no tracks")
 	}
-
+	fmt.Printf("Found %d tracks in source playlist: %s\n", len(items), source.Name)
 	var selectedURIs []string
 	notFound := []instrumental.Track{}
 	usableTracks := 0
 	for _, item := range items {
 		original, ok := originalTrackFromPlaylistItem(item)
+		fmt.Printf("Processing track: %s Artists: %s)\n", original.Title, original.Artists)
 		if !ok {
 			continue
 		}
 		usableTracks++
-		candidates, err := searchInstrumentalTrackCandidates(ctx, client, opts, original.Title)
+		candidates, err := searchInstrumentalTrackCandidates(ctx, client, opts, original.Title, original.Artists)
 		if err != nil {
 			return conversionResponse{}, spotifyOperationError{Operation: "search instrumental candidates", Err: err}
 		}
@@ -447,6 +472,12 @@ func (e spotifyOperationError) Unwrap() error {
 }
 
 func originalTrackFromPlaylistItem(item spotifyPlaylistTrackItem) (instrumental.Track, bool) {
+	if item.IsLocal {
+		return instrumental.Track{}, false
+	}
+	if item.Type != "" && item.Type != "track" {
+		return instrumental.Track{}, false
+	}
 	if item.Track != nil {
 		return originalTrackFromSpotifyTrack(*item.Track)
 	}
@@ -454,16 +485,22 @@ func originalTrackFromPlaylistItem(item spotifyPlaylistTrackItem) (instrumental.
 		return originalTrackFromSpotifyTrack(*item.Item)
 	}
 	track := instrumental.Track{
-		Title:   normalizePlainTextField(item.Name),
+		Title:   instrumental.NormalizeOriginalTitle(item.Name),
 		URL:     strings.TrimSpace(item.ExternalURLs.Spotify),
 		Artists: spotifyArtistNames(item.Artists),
 	}
 	return track, track.Title != ""
 }
 
-func originalTrackFromSpotifyTrack(track spotifyPlaylistTrack) (instrumental.Track, bool) {
+func originalTrackFromSpotifyTrack(track spotifyTrackObject) (instrumental.Track, bool) {
+	if track.IsLocal {
+		return instrumental.Track{}, false
+	}
+	if track.Type != "" && track.Type != "track" {
+		return instrumental.Track{}, false
+	}
 	original := instrumental.Track{
-		Title:   normalizePlainTextField(track.Name),
+		Title:   instrumental.NormalizeOriginalTitle(track.Name),
 		URL:     strings.TrimSpace(track.ExternalURLs.Spotify),
 		Artists: spotifyArtistNames(track.Artists),
 	}
